@@ -6,8 +6,7 @@
 /** @import { Level } from '../types.js' */
 import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
-import { drawArt } from '../art.js';
-import { text } from '../draw.js';
+import { text, drawWarning, drawRock } from '../draw.js';
 import { rand, pick, clamp, bodyHit, loseHeart, reachX, standX } from './kit.js';
 
 const DURATION = 45;
@@ -273,18 +272,10 @@ const avalanche = {
 
     for (const r of this.rocks) {
       if (r.warn > 0) {
-        const pulse = 0.6 + 0.4 * Math.sin(g.now * 20);
-        ctx.fillStyle = `rgba(255,70,50,${0.25 * pulse})`;
-        ctx.fillRect(r.x - r.r, 0, r.r * 2, g.H);
-        text(ctx, '!', r.x, 90 * u, 130 * u * pulse, { color: '#ffdd33' });
+        drawWarning(ctx, g, r.x, r.r);
         continue;
       }
-      if (!drawArt(ctx, 'rock', r.x, r.y, r.r * 2.2, r.rot)) {
-        ctx.beginPath();
-        ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
-        ctx.fillStyle = '#8a7f78';
-        ctx.fill();
-      }
+      drawRock(ctx, r.x, r.y, r.r, r.rot, Math.floor(r.r * 1000), u);
     }
 
     // rolling boulders: 3-2-1 + arrow, then JUMP!

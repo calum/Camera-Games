@@ -4,7 +4,7 @@
 const DEFS = {
   bubble: { file: 'bubble.png' },
   goldbubble: { file: 'goldbubble.png' },
-  rock: { file: 'rock.png', emoji: '🪨' },
+  rock: { file: 'rock.png' }, // no emoji: drawRock in draw.js draws a cartoon rock
   star: { file: 'star.png', emoji: '⭐' },
   heart: { file: 'heart.png' },
   hand: { file: 'hand.png' },

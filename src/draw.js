@@ -1,4 +1,5 @@
 import { drawArt } from './art.js';
+import { rng } from './scene-kit.js';
 import { BONES } from './tracker.js';
 
 export function text(ctx, str, x, y, size, o = {}) {
@@ -144,5 +145,91 @@ export function drawPoseIcon(ctx, key, x, y, s, color = '#fff') {
   };
   draw(0.1, 'rgba(0,0,0,0.6)');
   draw(0.055, color);
+  ctx.restore();
+}
+
+// How big a pop-in thing is `age` seconds after it appeared: grows past full size, then settles (0.4 -> 1.25 -> 1).
+// Score popups and countdown numbers use it, so they land with a little bounce instead of just appearing.
+export function popScale(age) {
+  if (age < 0) return 0.4;
+  if (age < 0.12) return 0.4 + (age / 0.12) * 0.85;
+  if (age < 0.3) return 1.25 - ((age - 0.12) / 0.18) * 0.25;
+  return 1;
+}
+
+// "Something is about to fall here": a red column fading downwards and a yellow warning sign at the top.
+// The sign bobs but never shrinks, so even a kid at the back of the room can see it (the old "!" pulsed down
+// to a fifth of its size). Used by Dodge the rocks, Avalanche and Catch the stars.
+export function drawWarning(ctx, g, x, r) {
+  const u = g.u;
+  const beat = Math.sin(g.now * 14);
+  const col = ctx.createLinearGradient(0, 0, 0, g.H * 0.75);
+  col.addColorStop(0, `rgba(255,70,50,${0.32 + 0.1 * beat})`);
+  col.addColorStop(1, 'rgba(255,70,50,0)');
+  ctx.fillStyle = col;
+  ctx.fillRect(x - r, 0, r * 2, g.H * 0.75);
+  const s = 62 * u * (1 + 0.08 * beat);
+  const y = 215 * u; // below the HUD (title, timer, score and hearts)
+  ctx.save();
+  ctx.lineJoin = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x, y - s * 0.62);
+  ctx.lineTo(x + s * 0.68, y + s * 0.52);
+  ctx.lineTo(x - s * 0.68, y + s * 0.52);
+  ctx.closePath();
+  ctx.lineWidth = s * 0.34;
+  ctx.strokeStyle = '#3a1d0a';
+  ctx.stroke();
+  ctx.lineWidth = s * 0.2;
+  ctx.strokeStyle = '#ffd21f';
+  ctx.stroke();
+  ctx.fillStyle = '#ffd21f';
+  ctx.fill();
+  ctx.restore();
+  text(ctx, '!', x, y + s * 0.12, s * 0.8, { color: '#3a1d0a', stroke: 'transparent', weight: 900 });
+}
+
+// A cartoon rock: lumpy, outlined, lit from above, so it matches the flat cartoon scenes and is
+// drawn exactly the size of its hit circle (the emoji it replaces only filled part of its box). The shape comes
+// from `seed`, so each rock keeps its own lumps as it spins. A rock.png in assets/ still replaces it.
+export function drawRock(ctx, x, y, r, rot, seed, u) {
+  if (drawArt(ctx, 'rock', x, y, r * 2.2, rot)) return;
+  const rnd = rng(seed);
+  const n = 9;
+  const pts = [];
+  for (let i = 0; i < n; i++) {
+    const a = (i / n) * Math.PI * 2;
+    const k = 0.86 + rnd() * 0.18;
+    pts.push([Math.cos(a) * r * k, Math.sin(a) * r * k]);
+  }
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(rot);
+  const outline = () => {
+    ctx.beginPath();
+    pts.forEach(([px, py], i) => (i ? ctx.lineTo(px, py) : ctx.moveTo(px, py)));
+    ctx.closePath();
+  };
+  outline();
+  ctx.fillStyle = '#8d8279';
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  // lighter top, kept upright so the light always comes from above while the rock spins
+  ctx.rotate(-rot);
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.beginPath();
+  ctx.ellipse(-r * 0.22, -r * 0.3, r * 0.5, r * 0.32, -0.4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(0,0,0,0.16)'; // and a shaded underside
+  ctx.beginPath();
+  ctx.ellipse(r * 0.25, r * 0.45, r * 0.7, r * 0.4, -0.3, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+  outline(); // the path is not part of save/restore: draw the outline again
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = '#3f3631';
+  ctx.lineWidth = 5 * u;
+  ctx.stroke();
   ctx.restore();
 }

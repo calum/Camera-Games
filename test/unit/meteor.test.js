@@ -76,7 +76,7 @@ test('meteor: has the full level interface', () => {
 test('meteor: survives 45 s with no players, 3 players and players changing', () => {
   const g = makeG([]);
   meteor.start(g);
-  const ctx = new Proxy({}, { get: (t, k) => (k === 'createRadialGradient' ? () => ({ addColorStop() {} }) : () => {}), set: () => true });
+  const ctx = new Proxy({}, { get: (t, k) => (/Gradient/.test(String(k)) ? () => ({ addColorStop() {} }) : () => {}), set: () => true });
   for (let i = 0; i < 60 * 46; i++) {
     g.now += 1 / 60;
     if (i === 600) g.players = [kid({ id: 1, x: 400 }), kid({ id: 2, x: 960 }), kid({ id: 3, x: 1500 })];
