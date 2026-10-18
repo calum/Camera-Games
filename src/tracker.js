@@ -485,16 +485,6 @@ export class PoseTracker {
     return this._queue(() => this._nextCamera());
   }
 
-  // Phones: swap between the front ("user") and back ("environment") camera. Returns the new facing mode.
-  flipCamera() {
-    return this._queue(async () => {
-      const facingMode = this.facingMode === 'environment' ? 'user' : 'environment';
-      await this._startCamera({ facingMode });
-      saveCamera(globalThis.localStorage, null);
-      return this.facingMode;
-    });
-  }
-
   async _nextCamera() {
     await this.refreshCameras();
     let id = nextCameraId(this.cameras, this.deviceId);
