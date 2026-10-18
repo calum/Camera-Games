@@ -7,26 +7,26 @@ The game shows a cartoon world on your TV. A camera watches the room, finds the 
 the picture so they can pop bubbles, dodge rocks, jump waves and copy dance poses. Up to four kids can play
 at once.
 
+**To play, open [https://calum.github.io/kids-camera-games/](https://calum.github.io/kids-camera-games/)** in Chrome, Edge or Safari. There is nothing to install.
+
 **Nothing is recorded or uploaded.** The camera picture is processed on your own device and never leaves it.
+After the first visit the game also works offline.
 
 ## Which setup is for you?
 
 | | Phone or tablet | Laptop and webcam |
 |---|---|---|
 | What you need | A phone or tablet and a way to show it on the TV (a cable or screen mirroring) | A laptop, a USB webcam, and an HDMI cable to the TV |
-| Setup time | A few minutes | A few minutes, plus a one-off install |
+| Setup time | A few minutes | A few minutes |
 | Picture | Phones have a wide lens, so they fit more kids in | Depends on the webcam; a wide-angle one is best |
 | Delay | Lowest with a cable; mirroring adds a small lag | Lowest |
-| Status | Coming soon: needs the online version of the game, which is being set up | Works today |
+| Controls | Tap the screen for buttons | The keyboard, or tap or move the mouse for buttons |
 
 Smart TV web browsers cannot use a camera, so the game cannot run on the TV itself.
 
 ---
 
 ## Setup A: a phone or tablet runs the game
-
-> **Not ready yet.** This route needs the online version of the game, which is still being built. When it is
-> ready, the web address will appear here and in the README. Until then, use Setup B.
 
 The idea is simple: the phone or tablet is both the camera and the game. You prop it under the TV facing the
 kids and show its screen on the TV.
@@ -44,17 +44,23 @@ kids and show its screen on the TV.
 
 ### Steps
 
-1. Open the game's web address in your phone's browser (Safari on iPhone and iPad, Chrome on Android).
-2. Tap **Allow** when it asks to use the camera. Choose the **front** camera if asked, so the screen faces
-   the kids while the camera does too.
+1. Open [https://calum.github.io/kids-camera-games/](https://calum.github.io/kids-camera-games/) in your phone's browser (Safari on iPhone and iPad, Chrome on Android).
+2. Tap **Allow** when it asks to use the camera. The game starts with the **front** camera, the one on the
+   screen side, so the kids can see the screen while the camera sees them. To use the back camera instead,
+   tap the screen and then **📷 Camera**.
 3. Turn the phone **sideways** (landscape). The game warns you if it is upright, because an upright picture
    is tall and narrow and misses kids at the sides.
 4. Connect the cable or start mirroring, so the game shows on the TV.
 5. Prop the phone under or on top of the TV, centred, with the camera pointing at the middle of the room and
    tilted very slightly down. Make sure the camera lens is not covered by your stand.
-6. For a full screen with no browser bars: on Android and iPad, use the fullscreen button in the game.
-   On iPhone, add the page to your Home Screen (Share, then "Add to Home Screen") and open it from there.
-7. Plug the phone into power. A game session drains a battery quickly.
+6. For a full screen with no browser bars: on Android and iPad, tap **⛶ Full screen** on the start screen
+   (next to "Full screen works best on a TV."). On iPhone, web pages cannot go full screen, so the game
+   says "For full screen: Share, then Add to Home Screen". Do that, then open the game from its new icon.
+7. Plug the phone into power. A game session drains a battery quickly. The game keeps the screen awake
+   by itself, so it will not dim or lock mid-game.
+
+There is no keyboard on a phone, so **tap the screen** to show the grown-up buttons: **▶ Start**,
+**⏭ Next level**, **⏏ Menu**, **📷 Camera** and **⛶ Full screen**. They fade away after a few seconds.
 
 ### Tips
 
@@ -71,26 +77,18 @@ This is how the game was built and tested.
 
 ### What you need
 
-- A laptop (Windows, Mac or Linux) with Chrome or Edge installed.
+- A laptop (Windows, Mac or Linux) with Chrome or Edge.
 - A USB webcam. Any webcam works, but a **wide-angle** one (90 degrees or more) fits more kids in. 720p at
   30 frames a second is plenty.
 - An HDMI cable from the laptop to the TV. You can also play on the laptop's own screen for a test.
-- One-off install: [Node.js](https://nodejs.org) (choose the "LTS" download). This is a free tool that runs
-  the game's tiny local web server. The game itself needs nothing else and works offline.
-
 ### Steps
 
-1. Download the game and unzip it somewhere easy to find, such as your Desktop.
-2. Plug the webcam into the laptop and the HDMI cable into the TV. Set the laptop to show on the TV
-   (on Windows press the Windows key and P, on a Mac use Displays in System Settings, or just close the lid
-   if the laptop is set to keep running).
-3. Start the game:
-   - **Windows:** double-click `start.bat`. It starts the server and opens the browser for you.
-   - **Mac or Linux:** open a Terminal in the game folder and type `node server.mjs`, then open
-     `http://localhost:8137` in Chrome or Edge.
-4. Click **Allow** when the browser asks for the camera.
-5. Press **F** for fullscreen on the TV.
-6. If the laptop has its own camera, the game may pick that one first. Press **C** to switch to the webcam.
+1. Plug the webcam into the laptop and the HDMI cable into the TV. Set the laptop to show on the TV
+   (on Windows press the Windows key and P, on a Mac use Displays in System Settings).
+2. Open [https://calum.github.io/kids-camera-games/](https://calum.github.io/kids-camera-games/) in Chrome or Edge.
+3. Click **Allow** when the browser asks for the camera.
+4. Press **F** (or click **⛶ Full screen**) for fullscreen on the TV.
+5. If the laptop has its own camera, the game may pick that one first. Press **C** to switch to the webcam.
    The game remembers your choice next time.
 
 ### Using a phone as the webcam instead
@@ -99,6 +97,12 @@ If you do not have a webcam, a phone can act as one. Install a phone-as-webcam a
 (on Windows 11 with an Android phone, "Link to Windows" can do this; Camo, Iriun and DroidCam are other
 options). Connect by USB if you can, pick the wide or 0.5x lens if the app offers it, hold the phone
 sideways, and press **C** in the game until the phone's picture appears.
+
+### Playing without the internet
+
+The game works offline after you have opened it once. To run your own copy instead, download the game,
+install [Node.js](https://nodejs.org) (the "LTS" download), then double-click `start.bat` on Windows, or
+type `node server.mjs` in a Terminal in the game folder on a Mac or Linux and open `http://localhost:8137`.
 
 ---
 
@@ -139,12 +143,15 @@ This makes the biggest difference to how well the game plays.
 
 ### Pets and passers-by
 
-- The game tracks up to **four people**. Anyone who walks into view can take one of those slots, even a grown-up
-  passing through, and people who do not join still appear in the cartoon. Keep the play area for the players
-  and watch from the side.
-- A grown-up who steps in to help counts as a person too. Step out again, or you may push a kid off the list.
-- **Pets** are not tracked as players, but a dog or cat wandering through makes the picture move and can leave
-  a ghostly blob near the kids. Best to keep them in another room during a game.
+- **Pets do not join in.** The game only counts something that looks like a standing person and stays in view
+  for about half a second, so a dog trotting past is ignored.
+- **Someone walking through during a game only watches.** A grown-up doing chores appears in the cartoon but
+  cannot score or get hit. To join part-way through, hold your arms out like an airplane for 2 seconds.
+- **A kid who steps out and comes back** is recognised by where they went and the colours they are wearing,
+  and carries on with their own colour and score.
+- The game tracks up to **four people** at once, so a crowd of watchers can still crowd out a player. Watch
+  from the side, out of the camera's view, when you can.
+- Movement still shows up in the cut-out, so a pet or a passer-by can appear as a ghostly shape for a moment.
 - Big movement near the camera, like someone waving a hand in front of the lens, upsets the tracking for a
   second or two. It recovers on its own.
 
@@ -166,7 +173,8 @@ This makes the biggest difference to how well the game plays.
 4. Anyone in view who did not hold their arms out **sits that game out**. They still appear in the cartoon,
    but they cannot score and nothing can hit them. This is handy for a toddler who just wants to be on the
    telly.
-5. A grown-up can press **Space** on the laptop to start with everyone, without the arms-out step.
+5. A grown-up can press **Space**, or tap **▶ Start**, to start with everyone, without the arms-out step.
+6. Someone who arrives once the game is going holds their arms out for 2 seconds to join in.
 
 ### The four levels
 
@@ -178,22 +186,22 @@ This makes the biggest difference to how well the game plays.
 | **Dance party** (disco) | Copy the stick-figure pose on screen: arms up, airplane, or hands on head, and hold it. |
 
 After the fourth level there is a winners screen, then the next round starts a little harder. Press **Esc**
-to go back to the start so a new group can join.
+or tap **⏏ Menu** to go back to the start so a new group can join.
 
-### Grown-up controls (laptop keyboard)
+### Grown-up controls
 
-| Key | What it does |
-|---|---|
-| **Space** | Start with everyone in view (and skip the winners screen) |
-| **F** | Fullscreen |
-| **Esc** | Back to the start screen, so kids can join again |
-| **C** | Switch to the next camera |
-| **N** | Skip to the next level |
-| **1** to **4** | Jump straight to a level |
-| **B** | Show the whole camera picture instead of the cartoon cut-out |
-| **D** | Show what the game sees (useful when something is not working) |
+Tap the screen (or move the mouse) to show the buttons. On a laptop the keys do the same.
 
-On a phone or tablet, the online version will have on-screen buttons for the main ones.
+| Button | Key | What it does |
+|---|---|---|
+| **▶ Start** | **Space** | Start with everyone in view (and skip the winners screen) |
+| **⏭ Next level** | **N** | Skip to the next level |
+| **⏏ Menu** | **Esc** | Back to the start screen, so kids can join again |
+| **📷 Camera** | **C** | Switch to the next camera (on a phone, front or back) |
+| **⛶ Full screen** | **F** | Fill the whole screen |
+| | **1** to **9** | Jump straight to a level |
+| | **B** | Show the whole camera picture instead of the cartoon cut-out |
+| | **D** | Show what the game sees (useful when something is not working) |
 
 ---
 
@@ -205,7 +213,7 @@ can also go to Settings, then Privacy, then Site settings, then Camera. If the g
 all it switches to "mouse mode" so you can still see it working: move the mouse to move, click to jump.
 
 **It shows the wrong camera (the laptop's own camera instead of the webcam).**
-Press **C** to switch. The game remembers your choice.
+Press **C** or tap **📷 Camera** to switch. The game remembers your choice.
 
 **The screen says "Step into view" but a kid is standing right there.**
 The game needs to see the whole body. Step back until feet and head are both in the picture. Check the lighting:
@@ -238,10 +246,14 @@ Left and right are mirrored on purpose, like a mirror, so a kid raising their ri
 the right. If the picture is upside down, your phone is propped the wrong way round.
 
 **A toddler keeps wandering into the frame and getting hit by rocks.**
-Nothing can hit a kid who did not join. Only kids who held their arms out at the start can lose hearts or
-score. Press **Esc** and start again if the wrong people joined.
+Nothing can hit a kid who did not join. Only kids who held their arms out can lose hearts or score. Press
+**Esc** or tap **⏏ Menu** and start again if the wrong people joined.
 
-**Windows says the port is in use, or the browser cannot find the page.**
+**The screen dims or the phone locks during a game.**
+The game asks the phone to stay awake, but some browsers only allow it after a tap. Tap the screen once
+after the game starts.
+
+**Running your own copy: Windows says the port is in use, or the browser cannot find the page.**
 Something else on the laptop is using the same address. Close other copies of the game. If that does not
 help, start it with a different port: open a Terminal in the game folder and type `set PORT=9000` then
 `node server.mjs` (Windows) and open `http://localhost:9000`.
