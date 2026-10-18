@@ -173,6 +173,7 @@ function nextLevel() {
 }
 
 const inLevel = () => state === 'intro' || state === 'play' || state === 'outro';
+const reconnecting = () => (pose && tracker === pose && state !== 'loading' ? pose.reconnecting : null);
 
 // ------------------------------------------------------------------ setup
 function resize() {
@@ -365,6 +366,9 @@ function update(dt) {
     family.readGuestFrame();
     g.players = [...local, ...family.remotePlayers(g.now, g.W, g.H, localPeople().map((p) => p.slot))];
   }
+  // The camera or the tracking is being reconnected (tracker.js heals itself): the game waits, so nobody loses
+  // hearts or time to a frozen picture, and carries on where it was once it is back.
+  if (reconnecting()) return;
   stateT += dt;
   admitPlayers(dt);
   // Cut the kids out of the camera picture (pose silhouettes + motion safety net). Only worth redoing when
@@ -584,6 +588,28 @@ function drawSetup() {
   text(ctx, foot, g.W / 2, g.H - 50 * u, 32 * u, { color: setup.overdue ? '#ffe14d' : '#cfd6e6' });
 }
 
+// The friendly screen while the camera or the tracking is put right (see PoseTracker._heal). After a few seconds
+// it suggests what a grown-up can check, in case it can't fix itself.
+function drawReconnecting() {
+  const u = g.u;
+  const what = reconnecting();
+  const secs = g.now - pose.reconnectingSince;
+  ctx.fillStyle = 'rgba(8,12,30,0.7)';
+  ctx.fillRect(0, 0, g.W, g.H);
+  ctx.lineWidth = 16 * u;
+  ctx.strokeStyle = '#7dff6b';
+  ctx.beginPath();
+  const a = g.now * 5;
+  ctx.arc(g.W / 2, g.H * 0.36, 60 * u, a, a + Math.PI * 1.3);
+  ctx.stroke();
+  text(ctx, what === 'camera' ? 'Reconnecting the camera...' : 'Waking up the pose detector...', g.W / 2, g.H * 0.56, 72 * u, { color: '#ffe14d' });
+  text(ctx, 'Hold on, the game will carry on by itself.', g.W / 2, g.H * 0.66, 44 * u);
+  if (secs > 6) {
+    const hint = what === 'camera' ? 'Grown-ups: check the camera is plugged in and no other app is using it.' : 'Grown-ups: closing other tabs and apps can help.';
+    text(ctx, hint, g.W / 2, g.H * 0.76, 32 * u, { color: '#cfd6e6' });
+  }
+}
+
 function render() {
   const u = g.u;
   if (family.guestView && family.drawHostPicture(ctx, g.W, g.H)) return; // the host's picture already carries the room label
@@ -662,6 +688,7 @@ function render() {
     ranked.forEach((p, i) => text(ctx, `${i === 0 ? '👑 ' : ''}★ ${p.score}`, g.W * ((i + 1) / (ranked.length + 1)), g.H * 0.62, 64 * u, { color: p.color }));
   }
 
+  if (reconnecting()) drawReconnecting();
   if (family.active) text(ctx, family.label, 30 * u, g.H - 30 * u, 26 * u, { align: 'left' });
 
   if (g.toast && g.now < g.toast.until) {

@@ -12,6 +12,7 @@ import { cameraConstraints, nextCameraId, describeCamera, saveCamera, parseMode,
 import { downsampleMaxInto, skeletonMaskInto } from './person-mask.js';
 import { People, COLORS } from './people.js';
 import { lookOf } from './look.js';
+import { Health, retryDelay } from './health.js';
 
 export { COLORS };
 
@@ -304,6 +305,9 @@ class WorkerEngine {
 
   close() {
     this.worker.terminate();
+    // a terminated worker never answers: settle what was waiting so nothing hangs on it
+    for (const p of this.pending.values()) p.reject(new Error('pose worker closed'));
+    this.pending.clear();
   }
 }
 
@@ -359,6 +363,19 @@ export class PoseTracker {
     this.failures = 0; // detections that failed in a row
     this.simulateLost = false; // tests: pretend the model finds nobody
     this.frameSeq = 0; // goes up by one with every tracked frame (the cut-out only redoes its work then)
+    // Self-healing (health.js): what is being put right ('camera' | 'tracker'), shown as a "reconnecting" screen
+    /** @type {null | 'camera' | 'tracker'} */ this.reconnecting = null;
+    this.reconnectingSince = 0;
+    this.health = new Health();
+    this.healTask = null;
+    this.healTries = 0;
+    this.healAt = 0;
+    this.healSeq = 0;
+    this.stalls = 0;
+    this.sentCount = 0;
+    this.warm = false; // the current engine has answered at least once
+    this.cameraStarted = false;
+    this.camBusy = 0; // camera operations under way (the picture is meant to be off meanwhile)
     // The pose model also outputs a silhouette per person. The engine shrinks them (all people OR-ed
     // together) into one small array that the cut-out logic (person-mask.js) uses. null until the camera is up.
     this.maskW = MASK_W;
@@ -500,7 +517,16 @@ export class PoseTracker {
   // Camera operations (start, switch, the slow-camera fallback) run strictly one after another, so two of
   // them can never fight over the camera, however the keys are pressed or whatever the timing.
   _queue(fn) {
-    const run = this._camQueue.then(fn, fn);
+    const job = async () => {
+      this.camBusy++;
+      try {
+        return await fn();
+      } finally {
+        this.camBusy--;
+        this.health.reset(null); // the picture was meant to stop meanwhile: start watching it afresh
+      }
+    };
+    const run = this._camQueue.then(job, job);
     this._camQueue = run.catch(() => {});
     return run;
   }
@@ -527,6 +553,7 @@ export class PoseTracker {
     this.players = [];
     this.maskLow = null;
     this.lastVideoTime = -1;
+    this.cameraStarted = true;
     await this.refreshCameras();
     this._watchCameraFps();
   }
@@ -633,20 +660,28 @@ export class PoseTracker {
       this.lastVideoTime = v.currentTime;
       const q = this.quality;
       const sent = performance.now();
-      this.inflight = this.engine
+      const engine = this.engine;
+      this.sentCount++;
+      const job = engine
         .detect(v, sent, { scale: q.scale, maskW: this.maskW })
         .then((res) => {
+          if (engine !== this.engine) return; // a late answer from an engine that has since been replaced
           // the whole round trip (frame copy, the worker, the answer coming back), not just the model's share
           if (res) this.latest = { ...res, modelMs: res.ms, ms: Math.max(res.ms, performance.now() - sent) };
           this.failures = 0;
+          this.warm = true;
         })
         .catch((e) => {
+          if (engine !== this.engine) return;
           console.error('detect failed', e);
           this.failures = (this.failures ?? 0) + 1;
           if (this.useWorker && this.failures >= 3) this._leaveWorker();
           else if (this.delegate === 'GPU' && !this.useWorker) this._fallbackToCpu();
         })
-        .finally(() => (this.inflight = null));
+        .finally(() => {
+          if (this.inflight === job) this.inflight = null;
+        });
+      this.inflight = job;
     }
     if (this.latest) {
       const res = this.latest;
@@ -658,7 +693,73 @@ export class PoseTracker {
       else this._apply(res, now);
     }
     this.players = this.people.tick(now);
+    this._heal(now);
     return this.players;
+  }
+
+  // Self-healing: if the camera has gone (unplugged, sleeping, taken by another app) or tracking has stopped
+  // answering (a crashed or hung worker), put it right by itself, retrying every few seconds until it works.
+  // Meanwhile `reconnecting` says what is being fixed, and the game shows a friendly screen instead of freezing.
+  _heal(now) {
+    if (!this.cameraStarted || this.camBusy || this.healTask) return;
+    const stream = /** @type {MediaStream | null} */ (this.video.srcObject);
+    const track = stream?.getVideoTracks?.()[0];
+    const h = this.health.check({
+      now,
+      trackLive: track?.readyState === 'live',
+      videoTime: this.video.currentTime,
+      waiting: !!this.inflight,
+      sent: this.sentCount,
+      detectMs: this.detectMs,
+      warm: this.warm,
+    });
+    // (tracking that fails every frame, e.g. a model that could not start, needs the same restart as a hung one)
+    const problem = h.camera === 'lost' ? 'camera' : h.tracker === 'stalled' || this.failures >= 6 ? 'tracker' : null;
+    if (!problem) {
+      // fixed once the camera is back AND a fresh frame has been tracked since
+      if (this.reconnecting && this.frameSeq > this.healSeq) {
+        console.warn(`${this.reconnecting} is back`);
+        this.reconnecting = null;
+        this.healTries = 0;
+      }
+      return;
+    }
+    if (now < this.healAt) return;
+    if (this.reconnecting !== problem) this.reconnectingSince = now;
+    this.reconnecting = problem;
+    this.healSeq = this.frameSeq;
+    console.warn(problem === 'camera' ? 'the camera picture stopped, reconnecting it' : 'tracking stopped answering, restarting it');
+    const fix = problem === 'camera' ? this._queue(() => this._startCamera({ deviceId: this.deviceId })) : this._restartEngine();
+    this.healTask = fix
+      .then(() => this.healTries++, (e) => {
+        console.warn('reconnecting failed, trying again soon', e);
+        this.healTries++;
+      })
+      .finally(() => {
+        this.healTask = null;
+        this.healAt = now + retryDelay(this.healTries); // `now` is when this attempt began
+        this.health.reset(null);
+      });
+  }
+
+  // Tracking stopped answering: start the model afresh. A worker that hangs twice is not trusted again: track on
+  // the main thread instead.
+  async _restartEngine() {
+    this.stalls++;
+    this.inflight = null;
+    this.warm = false;
+    if (this.useWorker && this.stalls >= 2) return this._leaveWorker();
+    this.switching = true;
+    try {
+      this.engine?.close();
+      const engine = this.useWorker ? new WorkerEngine() : new MainThreadEngine();
+      this.engine = engine; // set first, so a late answer from the old one is ignored
+      await engine.init({ model: this.quality.model, masks: this.quality.masks });
+      this.delegate = engine.delegate;
+      this.failures = 0;
+    } finally {
+      this.switching = false;
+    }
   }
 
   _apply(res, now) {
@@ -687,8 +788,9 @@ export class PoseTracker {
       this.engine.close();
       this.useWorker = false;
       const engine = new MainThreadEngine();
+      this.engine = engine; // set first, so a late answer from the old one is ignored
+      this.inflight = null;
       await engine.init({ model: this.quality.model, masks: this.quality.masks });
-      this.engine = engine;
       this.delegate = engine.delegate;
       this.failures = 0;
     } catch (e) {
