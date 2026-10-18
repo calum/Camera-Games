@@ -47,7 +47,7 @@ const bubbles = {
         b.dead = true;
         g.score(p, b.gold ? 3 : 1, b.x, b.y);
         g.burst(b.x, b.y, b.gold ? '#ffd24d' : '#bfeaff', b.gold ? 22 : 12);
-        (b.gold ? sfx.gold : sfx.pop)();
+        (b.gold ? sfx.gold : sfx.bubble)();
       }
     }
     this.items = this.items.filter((b) => !b.dead && b.y > -b.r * 2);

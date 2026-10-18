@@ -12,6 +12,7 @@
  * @property {boolean} [armsUp]     both wrists clearly above the head
  * @property {boolean} [airplane]   arms straight out to the sides (also how kids join)
  * @property {boolean} [handsHead]  both hands next to the head
+ * @property {boolean} [duck]       head well below the kid's standing height (ducking or crouching)
  */
 
 /**
@@ -36,6 +37,8 @@
  * @property {number} torso       shoulders-to-hips length in px (unreliable on small kids: prefer shoulderW)
  * @property {number} lastJump    game time (s) of the most recent jump
  * @property {number} jumps       number of jumps so far
+ * @property {number} [lastDuck]  game time (s) the kid was last ducking (pose.duck)
+ * @property {number} [motion]    how fast the body is moving, in shoulder widths per second (smoothed ~0.3 s)
  * @property {Poses} pose
  * @property {number} score
  * @property {number} seen        game time (s) the tracker last saw them
@@ -57,7 +60,9 @@
  * @property {number} H           canvas height in px
  * @property {number} u           size unit: 1u = H / 1080 px. Write every size as `n * g.u`.
  * @property {number} now         game time in seconds
- * @property {number} diff        difficulty: 1 in the first round, +0.25 each round after
+ * @property {number} diff        difficulty: 1 in the first round, +0.25 each round after, times `ease`
+ * @property {number} ease        auto-ease (ease.js): 1 normally, down to 0.55 when the kids keep failing.
+ *                                Already in `diff`; read it for difficulty that is not a speed (hold times)
  * @property {number} round
  * @property {boolean} fx         glow effects on (off with ?lite or on slow devices)
  * @property {Player[]} players   everyone the tracker sees, including kids who are only watching
@@ -66,6 +71,7 @@
  * @property {() => Player[]} activePlayers   visible AND playing: use this for gameplay
  * @property {(p: Player | null, pts: number, x: number, y: number) => void} score  add points (p = null: team only)
  * @property {(x: number, y: number, color: string, n?: number) => void} burst     a confetti burst
+ * @property {() => void} miss    a kid failed something (hit, splash, bonk): feeds auto-ease
  * @property {(msg: string) => void} endLevel  end the level early with a message (e.g. out of hearts: it replays)
  */
 

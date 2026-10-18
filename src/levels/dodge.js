@@ -46,7 +46,7 @@ const dodge = {
     for (const r of this.rocks) {
       if (r.warn > 0) {
         r.warn -= dt;
-        if (r.warn <= 0) sfx.whoosh();
+        if (r.warn <= 0) sfx.whistle();
         continue;
       }
       r.y += r.vy * dt;
@@ -59,14 +59,15 @@ const dodge = {
           p.hitUntil = g.now + 0.8;
           g.team.hearts--;
           g.burst(r.x, r.y, '#ff5a3a', 24);
-          sfx.boom();
+          sfx.bonk();
+          g.miss();
           if (g.team.hearts <= 0) g.endLevel('Oh no, out of hearts! Try again!');
         }
       }
       if (!r.dead && r.y > g.H + r.r) {
         r.dead = true;
         g.score(null, 1, r.x, g.H - 120 * u);
-        sfx.tick();
+        sfx.thud();
       }
     }
     this.rocks = this.rocks.filter((r) => !r.dead);

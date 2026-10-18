@@ -3,8 +3,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LEVELS } from '../../src/levels/index.js';
 
-const [bubbles, dodge, jump, dance] = LEVELS;
 const byId = (id) => LEVELS.find((l) => l.id === id);
+const [bubbles, dodge, jump, dance] = ['bubbles', 'dodge', 'jump', 'dance'].map(byId);
 
 function makeG(players = []) {
   return {
@@ -26,6 +26,10 @@ function makeG(players = []) {
     },
     burst() {
       this.bursts++;
+    },
+    misses: 0,
+    miss() {
+      this.misses++;
     },
     endLevel(msg) {
       if (!this.levelEnd) this.levelEnd = msg;
@@ -55,7 +59,7 @@ function kid(over = {}) {
 }
 
 test('there are four levels, each with the full interface', () => {
-  assert.equal(LEVELS.length, 4);
+  assert.equal(LEVELS.length, 11);
   for (const L of LEVELS) {
     assert.equal(typeof L.start, 'function', L.id);
     assert.equal(typeof L.update, 'function', L.id);
