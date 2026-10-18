@@ -1,4 +1,7 @@
-// Tiny synthesized sound effects (no audio files needed).
+// Tiny synthesized sound effects (no audio files needed), and the background music (music.js writes the notes).
+import { LEVEL, FAMILY, HOLD, VOICE_RMS, barNotes, barSeconds, duckGain, hz, rms, songFor } from './music.js';
+/** @import { Song } from './music.js' */
+
 let ctx = null;
 
 function ac() {
@@ -31,6 +34,7 @@ export function soundStream() {
   if (!tap) {
     tap = a.createMediaStreamDestination();
     out(a).connect(tap);
+    mg?.send.connect(tap);
   }
   return tap.stream;
 }
@@ -40,10 +44,11 @@ export function unlock() {
   ac();
 }
 
-function tone(freq, dur, { type = 'sine', vol = 0.15, to = null, delay = 0 } = {}) {
+// `at` is an AudioContext time (the music schedules ahead); `dest` where it plays (default: the sound bus).
+function tone(freq, dur, { type = 'sine', vol = 0.15, to = null, delay = 0, at = 0, dest = null } = {}) {
   const a = ac();
   if (!a || a.state !== 'running') return;
-  const t = a.currentTime + delay;
+  const t = (at || a.currentTime) + delay;
   const o = a.createOscillator();
   const g = a.createGain();
   o.type = type;
@@ -51,7 +56,7 @@ function tone(freq, dur, { type = 'sine', vol = 0.15, to = null, delay = 0 } = {
   if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
   g.gain.setValueAtTime(vol, t);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g).connect(out(a));
+  o.connect(g).connect(dest || out(a));
   o.start(t);
   o.stop(t + dur + 0.02);
 }
@@ -60,7 +65,7 @@ function tone(freq, dur, { type = 'sine', vol = 0.15, to = null, delay = 0 } = {
 let noiseBuf = null;
 
 // Filtered noise: `freq` is the filter's centre (or cut-off for 'lowpass'), `to` sweeps it.
-function noise(dur, { freq = 1000, to = null, q = 1, filter = 'bandpass', vol = 0.2, delay = 0 } = {}) {
+function noise(dur, { freq = 1000, to = null, q = 1, filter = 'bandpass', vol = 0.2, delay = 0, at = 0, dest = null } = {}) {
   const a = ac();
   if (!a || a.state !== 'running') return;
   if (!noiseBuf) {
@@ -68,7 +73,7 @@ function noise(dur, { freq = 1000, to = null, q = 1, filter = 'bandpass', vol = 
     const d = noiseBuf.getChannelData(0);
     for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   }
-  const t = a.currentTime + delay;
+  const t = (at || a.currentTime) + delay;
   const src = a.createBufferSource();
   src.buffer = noiseBuf;
   src.loop = true;
@@ -81,7 +86,7 @@ function noise(dur, { freq = 1000, to = null, q = 1, filter = 'bandpass', vol = 
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.02, dur / 4)); // a tiny fade-in, so no click
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  src.connect(f).connect(g).connect(out(a));
+  src.connect(f).connect(g).connect(dest || out(a));
   src.start(t);
   src.stop(t + dur + 0.02);
 }
@@ -156,4 +161,128 @@ export const sfx = {
     [2637, 2093, 1568].forEach((f, i) => tone(f, 0.3, { delay: i * 0.06, vol: 0.06 }));
   },
   crack: () => noise(0.15, { freq: 2500, to: 600, q: 1.5, vol: 0.22 }),
+};
+
+// ------------------------------------------------------------------ music
+// The music has its own path, so it can go quieter for voices without touching the sound effects:
+//   song (fades between songs) -> level -> local -> speakers         local goes down while the other home talks
+//                                       -> send  -> family stream    send goes down while our own kids talk
+// so the voices on a family call are always louder than the music, in both homes.
+const LOOKAHEAD = 0.25; // seconds of notes scheduled ahead (the game loop tops it up every frame)
+const FADE = 0.15; // time constant of the fade between songs (about 0.6 s to silence)
+
+/** @type {null | { level: GainNode, local: GainNode, send: GainNode, song: Song | null, gain: GainNode | null, mood: string | null, bar: number, nextBar: number, heardIn: number, heardOut: number, set: Map<AudioParam, number> }} */
+let mg = null;
+function musicGraph(/** @type {AudioContext} */ a) {
+  if (!mg) {
+    const level = a.createGain();
+    const local = a.createGain();
+    const send = a.createGain();
+    level.gain.value = 0;
+    level.connect(local).connect(a.destination);
+    level.connect(send);
+    if (tap) send.connect(tap);
+    mg = { level, local, send, song: null, gain: null, mood: null, bar: 0, nextBar: 0, heardIn: -Infinity, heardOut: -Infinity, set: new Map() };
+  }
+  return mg;
+}
+
+// Glide a gain to a new value; only when it changes, so the automation timeline doesn't fill up every frame.
+function glide(/** @type {AudioParam} */ p, v, now, tc) {
+  if (Math.abs((mg.set.get(p) ?? -1) - v) < 0.005) return;
+  mg.set.set(p, v);
+  p.setTargetAtTime(v, now, tc);
+}
+
+/** @param {Song} song @param {number} bar @param {number} t0 @param {AudioNode} dest */
+function playBar(song, bar, t0, dest) {
+  const beat = 60 / song.bpm;
+  for (const n of barNotes(song, bar)) {
+    const at = t0 + n.at * beat;
+    const dur = n.len * beat;
+    if (n.voice === 'bass') tone(hz(n.midi), dur, { type: 'triangle', vol: 0.09, at, dest });
+    else if (n.voice === 'chord') tone(hz(n.midi), dur, { vol: 0.03, at, dest });
+    else if (n.voice === 'lead') tone(hz(n.midi), dur, { type: song.lead, vol: song.lead === 'square' ? 0.022 : 0.05, at, dest });
+    else if (n.voice === 'kick') tone(120, 0.15, { to: 45, vol: 0.1, at, dest });
+    else if (n.voice === 'hat') noise(0.04, { freq: 7000, filter: 'highpass', vol: 0.02, at, dest });
+    else if (n.voice === 'snare') noise(0.12, { freq: 1800, q: 0.7, vol: 0.04, at, dest });
+  }
+}
+
+// Is anyone talking on these streams? One analyser per stream, made the first time it is seen.
+const listeners = new WeakMap();
+let samples = null;
+function talking(/** @type {AudioContext} */ a, /** @type {MediaStream[]} */ streams) {
+  let heard = false;
+  for (const s of streams) {
+    if (!s) continue;
+    if (!listeners.has(s)) {
+      try {
+        const an = a.createAnalyser();
+        an.fftSize = 512;
+        a.createMediaStreamSource(s).connect(an); // not to the speakers: the page already plays it
+        listeners.set(s, an);
+      } catch {
+        listeners.set(s, null); // no audio in it (yet)
+      }
+    }
+    const an = listeners.get(s);
+    if (!an) continue;
+    samples ??= new Float32Array(512);
+    an.getFloatTimeDomainData(samples);
+    if (rms(samples) > VOICE_RMS) heard = true;
+  }
+  return heard;
+}
+
+export const music = {
+  /** What is playing now: a mood (music.js moodFor) or null. For the tests. */
+  get mood() {
+    return mg?.mood ?? null;
+  },
+  /** The music's own gains (for the tests). */
+  _gains: () => mg,
+  /**
+   * Call every frame. Starts, changes (with a short fade) or stops the music, keeps notes scheduled ahead, and
+   * turns it down for voices on a family call.
+   * @param {string | null} mood  what should play (null: silence)
+   * @param {{ family?: boolean, incoming?: MediaStream[], outgoing?: MediaStream | null }} [call]
+   *   family: a family room is connected; incoming: the other home's voices; outgoing: our microphone
+   */
+  update(mood, { family = false, incoming = [], outgoing = null } = {}) {
+    const a = ctx; // never makes the AudioContext: that waits for a key or a tap (unlock)
+    if (!a || a.state !== 'running') return;
+    const m = musicGraph(a);
+    const now = a.currentTime;
+    if (mood !== m.mood) {
+      if (m.gain) {
+        const old = m.gain;
+        old.gain.setTargetAtTime(0, now, FADE);
+        setTimeout(() => old.disconnect(), 4000); // after its last scheduled notes have finished
+      }
+      m.mood = mood;
+      m.song = mood ? songFor(mood) : null;
+      m.gain = null;
+      if (m.song) {
+        m.gain = a.createGain();
+        m.gain.gain.setValueAtTime(0.0001, now);
+        m.gain.gain.setTargetAtTime(1, now, FADE);
+        m.gain.connect(m.level);
+        m.bar = 0;
+        m.nextBar = now + 0.05;
+      }
+    }
+    glide(m.level.gain, LEVEL * (family ? FAMILY : 1), now, 0.3);
+    if (talking(a, incoming)) m.heardIn = now;
+    if (talking(a, outgoing ? [outgoing] : [])) m.heardOut = now;
+    glide(m.local.gain, duckGain(now - m.heardIn), now, now - m.heardIn <= HOLD ? 0.03 : 0.2);
+    glide(m.send.gain, duckGain(now - m.heardOut), now, now - m.heardOut <= HOLD ? 0.03 : 0.2);
+    if (!m.song || !m.gain) return;
+    if (m.nextBar < now - 0.05) m.nextBar = now + 0.05; // the tab slept: carry on from now, don't catch up
+    while (m.nextBar < now + LOOKAHEAD) {
+      playBar(m.song, m.bar, m.nextBar, m.gain);
+      m.nextBar += barSeconds(m.song);
+      m.bar++;
+    }
+  },
 };

@@ -164,6 +164,10 @@ the new file name in [`assets/README.md`](../assets/README.md).
 and filtered noise, so no files are needed. Give a new level a few sounds of its own (add a line to `sfx`), and
 keep failing sounds silly rather than scary. A unit test checks that every `sfx.<name>` a level uses exists.
 
+**Music**: every level has background music, generated in `src/music.js`. A new level gets a tune made from its
+id automatically; to choose its tempo, key and feel, add a line to `SONGS` with the level's id. A level that makes
+its own music (like Freeze!) goes in `SILENT_LEVELS`.
+
 **Backdrop**: by default a level uses the scene with its own id, or the menu meadow if there is none. Set
 `backdrop: 'jump'` to reuse a scene, or give a scene object:
 

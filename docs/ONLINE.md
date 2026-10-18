@@ -50,6 +50,12 @@ study is in the project's `design/online-multiplayer.md`.
 - **Game sounds.** The host also sends its sound effects (`soundStream()` in `audio.js` taps the same bus the
   speakers use), so the guest hears the pops and cheers. Because they come out of the same browser as the voices,
   the browser's echo cancellation can treat them as speaker sound and keep them out of the host's microphone.
+- **Music.** The host's music goes to the guest with its sound effects (the guest plays none of its own), on its own
+  path so the voices always win: during a call the music plays at 60% (`FAMILY` in `music.js`), and while
+  anyone talks it drops to 30% of that (`DUCK`, about -15 dB in all) within a few hundredths of a second, holds
+  for 0.6 s after the last word and comes back over 1.2 s. The host's speakers duck for the guests' voices, and
+  the copy sent to the guests ducks for the host's own microphone. "Talking" is a loudness over `VOICE_RMS`
+  measured on the call's audio; the volumes are first guesses, so tune those constants after a real call.
 - Nothing pops: guests stay through short dropouts and are remembered 20 s, like local kids.
 
 ## Between two homes: the Cloudflare pairing function
