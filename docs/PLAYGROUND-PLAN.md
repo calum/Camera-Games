@@ -2,8 +2,10 @@
 
 Status: **planned, nothing built yet.** This is the single plan for calibrating the play area; the product
 plan in [PUBLIC-PLAN.md](PUBLIC-PLAN.md) links here instead of repeating it. It builds on the camera picker (key
-**C**, `src/camera.js`) and the cut-out (`src/person-mask.js`, `src/cutout.js`), which are already built. See
-[PLAN.md](PLAN.md) for the game's technical plan.
+**C**, `src/camera.js`) and the cut-out (`src/person-mask.js`, `src/cutout.js`), which are already built. The
+first-launch setup check (`src/setup-check.js`: camera, light, distance, speed) is also built and covers part of
+the "is the camera right?" job; the camera step below would come after it. See [PLAN.md](PLAN.md) for the game's
+technical plan.
 
 ## Why
 
@@ -21,8 +23,8 @@ plan in [PUBLIC-PLAN.md](PUBLIC-PLAN.md) links here instead of repeating it. It 
 2. **Level 0, "Paint your playground".** The background is hidden (kids cut out over a cartoon backdrop) with a
    faint 20% ghost of the real room, so the sofa is easy to avoid. As the kids run around and wave, the cells
    they cover light up. When the painted area stops growing for about 2 seconds, "Playground ready" appears.
-3. **The picture zooms in to the painted region and fills the screen.** The join-by-arms-out lobby and levels 1-4
-   then run unchanged.
+3. **The picture zooms in to the painted region and fills the screen.** The join-by-arms-out lobby, the level picker
+   and the levels then run unchanged.
 4. If a saved playground exists for that camera: **Enter** uses it, **P** repaints.
 
 ## Decisions

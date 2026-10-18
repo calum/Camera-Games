@@ -1,7 +1,7 @@
 # Kids Camera Game: Plan
 
 A "Nex Playground"-style game for our own kids: a webcam on the TV tracks their bodies,
-and they play short levels (pop, dodge, jump, dance) using **our own art**.
+and they play short levels (pop, dodge, jump, dig, dance and more) using **our own art**.
 
 ## Related plans
 
@@ -19,7 +19,8 @@ Each plan has one job; follow the link rather than looking for the detail here.
    and a Raspberry Pi come later.
 2. Group play: 2-4 kids at once, shared goals and a bit of friendly scoring.
 3. Fast to change. New levels and art should take minutes, not days.
-4. No install and no cloud. It runs offline after the first setup.
+4. No install and no cloud. It runs offline after the first setup. The one exception is family play across
+   homes, which needs a tiny pairing service to introduce the two browsers (see [ONLINE.md](ONLINE.md)).
 
 ## Key decision: web first, Rust later (if ever)
 
@@ -42,17 +43,25 @@ separately and the game design carries over unchanged.
 ## Architecture
 
 ```
-index.html -> src/main.js        game loop, state machine, HUD, screens
-                 |-- tracker.js  PoseTracker (camera + MediaPipe) / MouseTracker (testing)
-                 |-- levels.js   bubbles, dodge, jump, dance (each: start/update/draw)
-                 |-- draw.js     text, skeleton, hearts, pose icon
-                 |-- art.js      loads /assets/*.png, falls back to emoji/procedural
-                 `-- audio.js    synthesized sound effects (no audio files)
-server.mjs                       tiny static server (localhost:8137)
-vendor/, models/                 MediaPipe runtime + pose model, stored locally
+index.html -> src/main.js          game loop, state machine, HUD, screens, keys
+                 |-- tracker.js    PoseTracker (camera + quality ladder + self-healing) / MouseTracker
+                 |     |-- pose-worker.js  MediaPipe in a Web Worker (main-thread fallback in tracker.js)
+                 |     |-- people.js, look.js  who is who
+                 |     `-- health.js  lost camera / hung tracker verdicts
+                 |-- levels/       one file per level, index.js = the list (each: start/update/draw)
+                 |-- picker.js, lobby.js, setup-check.js  level picker, joining, first-launch check
+                 |-- person-mask.js, cutout.js, backdrops*.js  cut-out and cartoon worlds
+                 |-- family.js, online.js  family play over WebRTC
+                 |-- draw.js, art.js, audio.js, ease.js  drawing, swappable art, sounds, auto-ease
+                 `-- controls.js, device.js  touch buttons, wake lock, phone/laptop defaults
+server.mjs                         tiny static server (localhost:8137)
+sw.js                              offline copy on the hosted site
+cloudflare/                        family-play pairing service (Worker + Durable Object)
+vendor/, models/                   MediaPipe runtime + pose models, stored locally
 ```
 
-Flow: `loading -> menu (join) -> pick (level picker, src/picker.js) -> intro -> play -> outro -> pick ...`.
+Flow: `loading -> (setup, first launch) -> menu (join) -> pick (level picker) -> intro -> play -> outro -> pick ...`.
+The full module list is in [CLAUDE.md](../CLAUDE.md#architecture).
 
 ### How tracking becomes gameplay
 
@@ -67,14 +76,22 @@ Flow: `loading -> menu (join) -> pick (level picker, src/picker.js) -> intro -> 
 Everything is relative to the kid's own body size (shoulder width, torso length), so
 small and tall kids, near or far, behave the same way.
 
-## The four demo levels (30 s each)
+## The levels
+
+The first four, from the original demo:
 
 1. **Pop the bubbles.** Hands pop bubbles, and gold ones are worth 3. Spawn rate scales with player count.
 2. **Dodge the rocks.** A "!" warning, then a rock drops. Half the rocks are aimed at a kid. Rocks fall at 420-560 px/s (1080p), slowed after the first playtest. The team shares 5 hearts, and 0 hearts means the level replays.
 3. **Jump the waves.** 3-2-1 countdown, then a wave rolls across the screen. Jump as it passes you. The window is deliberately forgiving (0.5 s early to 0.3 s late). Every kid gets an obvious result: a green glowing skeleton, "NICE JUMP! +1" and a ring for a good jump, or a red skeleton with "SPLASH!" / "TOO EARLY!" and a hint for a miss.
 4. **Dance party.** Copy the stick-figure pose and hold it for about 1 s. Each kid scores separately.
 
-After each level the level picker comes back; nothing plays on by itself.
+Added after the first playtest, favouring whole-body action: **Dig down!** (each jump stomps a brick), **Duck and
+jump** (logs and birds), **Catch the stars!** (bubbles plus dodging meteors), **Avalanche!** (dodge, jump boulders,
+hide from a giant boulder), **Keep it up!** (balloons), **Freeze!** (freeze dance) and **Hole in the wall!** (poses
+with a wall coming at you). The play order is in `src/levels/index.js`; Dance party, the least liked, comes last.
+
+After each level the level picker comes back; nothing plays on by itself. Every level has its own synthesized
+sounds, and auto-ease (`src/ease.js`) lowers the difficulty when the kids keep missing.
 
 Design rules: team-first (shared hearts and score, per-kid stars on top); forgiving
 hit boxes; no hard failure (running out of hearts only replays the level); big text
@@ -90,8 +107,10 @@ code changes. See `assets/README.md`. New art types are one line in `src/art.js`
 
 * **Camera:** put the webcam on top of the TV. Kids should stand 2-3 m back with their
   whole body in view. Light the room from the front and avoid bright windows behind them.
-* **Laptop:** the lite pose model needs roughly 15-30 ms per frame on integrated graphics.
-  That is comfortable at 30 fps.
+* **Laptop:** starts on the full pose model and steps down the quality ladder (lite model, half-size picture,
+  no masks, then the main thread) if tracking averages over 50 ms. The lite model needs roughly 15-30 ms per frame
+  on integrated graphics. `npm run test:perf` checks every level stays smooth on a laptop without a GPU, and the
+  setup check warns when the browser's graphics acceleration is off.
 * **Raspberry Pi 5:** expect about 15-25 fps tracking. Use `?lite` to drop glow effects.
   The game keeps drawing at 60 fps between tracking updates. A Pi 4 is borderline.
 * **Phone / iPad:** open https://calum.github.io/kids-camera-games/ (HTTPS, so the camera is allowed).
@@ -101,6 +120,9 @@ code changes. See `assets/README.md`. New art types are one line in `src/art.js`
 ## Roadmap
 
 - [x] **M1: playable demo** (this repo): 4 levels, multi-kid, mouse fallback, offline.
+- [x] **M1b: robustness and polish** (October 2026): tracking in a worker with step-down and main-thread fallback,
+      the carousel level picker, sound effects, auto-ease, a first-launch setup check (with a GPU check),
+      self-healing (lost camera, hung tracker), `?debug` console summary, performance tests.
 - [ ] **M2: playtest with the kids.** Tune hit sizes, jump sensitivity, level length, spawn rates.
       The constants are at the top of each level file in `src/levels/` and in `computeFeatures` in `tracker.js`.
       Findings so far (October 2026): favourites are Dodge the rocks, then Jump the waves, then Pop the bubbles;
@@ -108,13 +130,12 @@ code changes. See `assets/README.md`. New art types are one line in `src/art.js`
       parent walking past joined for a few seconds: fixed by probation, mid-game watching and recognising
       returning kids (`src/people.js`).
 - [ ] **M3: our art and sound.** Replace the placeholder graphics, add music and voice cheers.
-- [ ] **M4: more levels.** Adding one is a single file: see [ADDING-GAMES.md](ADDING-GAMES.md).
-      The kids like whole-body action (dodging, jumping) far more than holding poses, so favour:
-      duck-and-jump obstacle run (low branches to duck, logs to jump), meteor shower with lanes (run left and
-      right), jump-to-stomp (bricks, puddles), catch falling stars in a basket (both hands), kick the ball,
-      whack-a-mole with the feet, freeze dance (move, then freeze when the music stops), sleeping-dragon sneak.
-      A mixed "dodge and jump" level could combine the two favourites. Rework Dance party to be more active
-      (poses to the beat, shorter holds) or drop it from the default list.
+- [ ] **M4: more levels.** Adding one is a single file: see [ADDING-GAMES.md](ADDING-GAMES.md). Seven added so
+      far (11 in all): Dig down, Duck and jump, Catch the stars, Avalanche, Keep it up, Freeze, Hole in the wall.
+      They need a playtest. Still ideas (the kids like whole-body action far more than holding poses): meteor
+      shower with lanes (run left and right), catch falling stars in a basket (both hands), kick the ball,
+      whack-a-mole with the feet, sleeping-dragon sneak. Rework Dance party to be more active (poses to the beat,
+      shorter holds) or drop it. More ideas in the project's `design/level-ideas.md`.
 - [x] **M5a: cut-out + cartoon worlds** (pose silhouette + motion safety net, a backdrop per level).
 - [ ] **M5b: silhouette-only gameplay** (use the silhouette itself, not just the skeleton) for big groups and for kids who are too close
       or too small for skeleton tracking.
@@ -123,7 +144,7 @@ code changes. See `assets/README.md`. New art types are one line in `src/art.js`
 - [x] **M7b: the game running on a phone or tablet.** GitHub Pages hosting (HTTPS), relative paths, offline
       copy and install-as-app, touch buttons, wake lock, full-screen note, lighter defaults, tracking in a worker.
       Streaming a phone's camera to a laptop's browser is not planned (it would need a signalling server).
-- [ ] **M7c: family play across homes.** Prototype done (room code, WebRTC, voice, game sounds) and the Cloudflare pairing function written and tested locally; deploying it and a real two-home test remain. See [ONLINE.md](ONLINE.md).
+- [ ] **M7c: family play across homes.** Built and deployed: room code, WebRTC, voice, game sounds, and the Cloudflare pairing function (only the host's own key can replace the host; relay credentials only go to browsers in a room). A real two-home test remains, and the TURN relay if a family's network needs it. See [ONLINE.md](ONLINE.md).
 - [ ] **M8: camera setup and "Paint your playground".** See [PLAYGROUND-PLAN.md](PLAYGROUND-PLAN.md).
 - [ ] **M9: public release.** See [PUBLIC-PLAN.md](PUBLIC-PLAN.md).
 
@@ -179,5 +200,7 @@ seconds. `src/people.js` (pure, unit-tested) now sits between the pose model and
   who walks into view *after* the game started also watches until they do that.
 * Recognising a returning kid by clothing colours fails when siblings wear the same colours or the lighting
   changes a lot; they then come back as watchers and rejoin with arms out.
+* Auto-ease lowers `g.diff`, but the per-round step up (`g.round`) is never raised now that the picker replaced
+  playing straight through the list, so difficulty never goes above 1.
 * Port 8137 is used because another program here already uses 8000.
   Change it with the `PORT` environment variable.

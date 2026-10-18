@@ -1,11 +1,21 @@
 # Family play: kids and grandparents on one screen
 
-**Status: prototype, not deployed yet.** Two browser windows pair with a room code and play together over a real
-WebRTC connection, with voices and game sounds both ways. The pairing function for two different homes is written
-and tested locally, but needs deploying to a Cloudflare account (below). The feasibility study is in the project's
-`design/online-multiplayer.md`.
+**Status: deployed, not yet tried between two real homes.** Two browsers pair with a room code and play together
+over a real WebRTC connection, with voices and game sounds both ways. The pairing function runs on Cloudflare at
+`https://kids-camera-game-pairing.calum-4ster.workers.dev`, and the published game at
+https://calum.github.io/kids-camera-games/ points at it (the `PAIRING_URL` repository variable). The feasibility
+study is in the project's `design/online-multiplayer.md`.
 
-## Try it
+## Play it between two homes
+
+1. On the TV open the published game and press **O** in the menu (or tap **👪 Family**). The screen shows a
+   five-letter room code and a link.
+2. The other home opens the link (`https://calum.github.io/kids-camera-games/?room=CODE`) and allows the camera and
+   microphone. The host's screen shows "connected" and the round-trip time.
+3. From then on it plays as described below. **O** again closes the room (or leaves it).
+
+
+## Try it on one computer
 
 1. Start the game (`node server.mjs`) and open it. In the menu press **O** (or tap the **Family** button): the
    screen shows a five-letter room code.
@@ -69,6 +79,8 @@ To try it without deploying: `npx wrangler dev` in `cloudflare/` runs the same W
 
 ## Not done yet
 
+- **Not tried between two real homes.** If a family's network fails to connect, add the TURN relay
+  ([DEPLOY-CLOUDFLARE.md](DEPLOY-CLOUDFLARE.md#optional-the-relay-for-tricky-home-networks)); it isn't set up yet.
 - **Real delay is unmeasured.** On one machine the round trip is a few tens of ms. The host shows the measured round
   trip. Test with two real homes before tuning anything.
 - **Echo with a loud TV is untested.** See Voices above; needs a real room and real speakers.

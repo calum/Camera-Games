@@ -48,13 +48,15 @@ Steps marked *(planned)* do not exist yet; see [PLAYGROUND-PLAN.md](PLAYGROUND-P
 
 **With a webcam**
 
-1. **What you need:** a laptop, a webcam, a TV or monitor on HDMI (or just the laptop screen), and Node.js.
+1. **What you need:** a laptop, a webcam, and a TV or monitor on HDMI (or just the laptop screen). No install:
+   the game is at https://calum.github.io/kids-camera-games/ (Node.js only to run your own copy).
 2. **Choosing a webcam:** USB, 720p at 30 frames a second or better, and the widest field of view you can get
    (around 90 degrees or more). Check reviews to see whether the wide view is kept at 720p.
 3. **Place it:** on top of the TV, centred, tilted slightly down. Kids stand 2-3 m back with their whole body
    and arm span in view. Light the room from the front, with no window behind them. Put the TV in Game mode.
-4. **Start:** run `start.bat` (or `node server.mjs` and open the address), click Allow for the camera, and press
-   **F** for fullscreen.
+4. **Start:** open the game, click Allow for the camera, and press **F** for fullscreen. The first time, a
+   10-second setup check looks at the camera, light, distance and speed (and graphics acceleration) and says
+   what to fix.
 5. **Check the camera:** press **C** if it picked the wrong one. *(planned: a confirm step that shows the whole
    camera picture before anything is hidden.)*
 6. **Choose the play area:** *(planned)* the kids run around and colour in the area they want to play in.
@@ -94,7 +96,9 @@ Steps marked *(planned)* do not exist yet; see [PLAYGROUND-PLAN.md](PLAYGROUND-P
 
 ## 6. Safety and privacy
 
-- Tell parents that everything runs on the device and nothing is uploaded.
+- Tell parents that everything runs on the device and nothing is uploaded. Family play across homes is the
+  exception: it is off until a grown-up opens a room, and then sends the picture and voice only to the invited
+  family, browser to browser (see [ONLINE.md](ONLINE.md#privacy)).
 - Include a short safety note: where to place the camera or phone, and keeping cables and the phone out of
   children's reach.
 - Check the legal requirements for children's data and online services in each target market before
@@ -112,4 +116,5 @@ Steps marked *(planned)* do not exist yet; see [PLAYGROUND-PLAN.md](PLAYGROUND-P
 - Which phone route first: the phone-as-webcam apps we have now, or the game running on the phone itself?
 - Which minimum webcam specification do we recommend, and do we name specific models?
 - Should the game ask for a child's age or height to tune the play area?
-- ~~Do we need a server for anything?~~ No: everything runs on the device and the site is static.
+- ~~Do we need a server for anything?~~ No: everything runs on the device and the site is static. Family play
+  adds only a tiny pairing service on Cloudflare, which never sees the video.

@@ -41,14 +41,14 @@ A level is a plain object (see the `Level` type in [`src/types.js`](../src/types
 
 | Field | Meaning |
 |---|---|
-| `id` | Short, unique, lowercase (`'stars'`). Also names the backdrop and `assets/bg_<id>.png`. |
+| `id` | Short, unique, lowercase (`'stars'`). Also used in `?level=<id>` and as the default backdrop name. |
 | `title` | The big title on the intro screen and in the HUD. |
 | `icon` | One emoji, the big picture on the level's card in the level picker (a kid who can't read picks by it). |
 | `hint` | One short line saying what to do. Most kids can't read it, so a grown-up says it out loud. |
 | `color` | The level's colour, used as a light tint in camera view. |
 | `duration` | Seconds. Levels are about 30 s. |
 | `hearts` | Optional. `true` shows the team's shared hearts (see Dodge the rocks). |
-| `backdrop` | Optional. A scene id (`'menu'`, `'bubbles'`, `'dodge'`, `'jump'`, `'dance'`, `'finale'`) or your own scene. |
+| `backdrop` | Optional. A scene id (`'menu'`, `'bubbles'`, `'dodge'`, `'jump'`, `'dance'`, `'finale'`) or your own scene object (the newer levels use `EXTRA_SCENES.<id>` from `backdrops-extra.js`). |
 | `art` | Optional. Art slots your level adds, e.g. `{ bigstar: { file: 'bigstar.png', emoji: '⭐' } }`. |
 | `start(g)` | Reset **all** your state. Called before every play, including replays. |
 | `update(g, dt)` | Move things on by `dt` seconds, check hits, score. |
@@ -72,8 +72,11 @@ same object is reused every time the level is played.
 
    ```js
    import rockets from './rockets.js';
-   export const LEVELS = [bubbles, dodge, jump, rockets, dance];
+   export const LEVELS = [bubbles, dodge, jump, /* ... */ rockets, wall, dance];
    ```
+
+   The order is the order of the cards in the picker. Favourites (dodging, jumping) are spread out, and the
+   still-pose Dance party stays last.
 
 3. **Play it with the mouse.** Run `node server.mjs` and open
    `http://localhost:8137/?mouse&level=rockets`. The mouse is a pretend kid: moving it moves the body and
@@ -126,7 +129,7 @@ tracked on small kids. The old torso-based pose rules rejected a toddler with bo
 | `g.W`, `g.H` | Canvas size in px. |
 | `g.u` | The size unit: `1u = g.H / 1080`. Write every size and speed as `n * g.u` so the level looks the same on a laptop and a TV. |
 | `g.now`, `dt` | Game time in seconds, and the time since the last frame (at most 0.05 s). |
-| `g.diff` | Difficulty: 1 in the first round, then 1.25, 1.5 and so on, lowered by auto-ease when the kids keep failing. Multiply speeds and divide spawn gaps by it. |
+| `g.diff` | Difficulty: 1, lowered by auto-ease when the kids keep failing (there is also a per-round step, `1 + 0.25 * g.round`, but nothing raises `g.round` at the moment). Multiply speeds and divide spawn gaps by it. |
 | `g.miss()` | Call it when a kid fails something (hit by a rock, a splash, a dropped balloon). Three misses close together make the game ease off (`src/ease.js`). |
 | `g.ease` | The auto-ease factor, 1 down to 0.55. It is already in `g.diff`; use it for difficulty that is not a speed, like a hold time (`HOLD * (g.ease ?? 1)`). |
 | `g.activePlayers()` | The kids who are playing. |
@@ -171,7 +174,9 @@ backdrop: {
 },
 ```
 
-A family can always replace it with `assets/bg_<id>.png`.
+A family can replace the built-in scenes (`menu`, `bubbles`, `dodge`, `jump`, `dance`, `finale`) with
+`assets/bg_<scene>.png`. For a level with its own scene, `bg_<id>.png` only loads if the level declares it as an
+art slot: `art: { bg_rockets: { file: 'bg_rockets.png' } }` (none of the current levels do yet).
 
 ## Testing a level
 
