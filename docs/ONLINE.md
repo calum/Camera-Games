@@ -48,12 +48,15 @@ and tested locally, but needs deploying to a Cloudflare account (below). The fea
 connection details to each other, so they can connect directly with nothing to set up on either router (no port
 forwarding, no addresses to type). Nothing is stored; a room exists while its sockets are open.
 
-- `wss://<worker>/room/CODE?role=host|guest`: a room for two browsers. The host opens it; a guest can only join a
-  room that has a host, and only one guest at a time (rules in `cloudflare/rules.js`, unit tested). A mistyped code
-  finds nobody; a stranger who guesses a live code is turned away while the family is connected.
-- `https://<worker>/ice`: the STUN/TURN servers for the connection. STUN alone connects most homes. About one home
-  in ten has a router that needs a TURN relay; add Cloudflare's TURN (steps below) and the Worker hands out
-  short-lived credentials, so no secret reaches the browser.
+- `wss://<worker>/room/CODE?role=host|guest`: a room for two browsers. The host opens it with a random key it
+  makes for that room, and only that key can take the host's place (its own reconnect after a network blip). A
+  guest can only join a room that has a host, and only one guest at a time (rules in `cloudflare/rules.js`, unit
+  tested). A mistyped code finds nobody; a stranger who guesses a live code can replace neither the host nor the
+  guest.
+- The Worker's first message on each room socket is the STUN/TURN servers for the connection. STUN alone connects
+  most homes. About one home in ten has a router that needs a TURN relay; add Cloudflare's TURN (steps below) and
+  the Worker hands out short-lived credentials, so no secret reaches the browser. They go only to browsers in a
+  live room (the host, and a guest who got in), so nobody can collect relay credentials and run up the TURN bill.
 
 **Deploying:** [DEPLOY-CLOUDFLARE.md](DEPLOY-CLOUDFLARE.md) has the steps, both once from your computer and
 automatically from GitHub Actions (two secrets for the deploy, and a `PAIRING_URL` repository variable that the
