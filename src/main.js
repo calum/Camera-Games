@@ -11,6 +11,7 @@ import { loadSavedCamera } from './camera.js';
 import { defaultSettings } from './device.js';
 import { createControls } from './controls.js';
 import { Family } from './family.js';
+import { SIGNAL_URL } from './online-config.js';
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
 const ctx = canvas.getContext('2d');
@@ -81,7 +82,7 @@ let levelT = 0;
 const lobby = new Lobby({ hold: 3 });
 // Playing with family in another home (docs/ONLINE.md). Idle unless the grown-up opens a room (key O) or the page
 // was opened with ?room=CODE.
-const family = new Family({ canvas, search: location.search, origin: location.origin + location.pathname });
+const family = new Family({ canvas, search: location.search, origin: location.origin + location.pathname, signal: params.get('signal') || SIGNAL_URL });
 let outroMsg = '';
 let status = 'Loading...';
 

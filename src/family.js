@@ -5,20 +5,21 @@
 //   guest  the other home. Runs its own tracking and cut-out as usual, sends skeletons + cut-out, and shows
 //          the host's picture full screen.
 //
-// Signalling (the two browsers finding each other) goes through `Signal`. For now that is a BroadcastChannel,
-// so two tabs of one browser can pair with no server; a cloud function replaces it later without touching the
-// rest. Video and skeletons then go directly between the browsers. See docs/ONLINE.md.
+// Signalling (the two browsers finding each other) goes through a Signal: the Cloudflare pairing function
+// (cloudflare/worker.js) when a URL is configured, or a BroadcastChannel so two windows on one computer can pair
+// with no server at all. Video, voices and skeletons then go directly between the browsers. See docs/ONLINE.md.
 import { RemoteCrowd, decodeDoubleWide, makeRoomCode, normaliseCode, packPlayers } from './online.js';
 
-// Replace with a STUN/TURN list for real networks (two different homes). Empty is fine on one machine.
-const ICE_SERVERS = [];
+// Used when the pairing function cannot be asked: public STUN only (works for most home routers, no relay).
+const FALLBACK_ICE = [{ urls: ['stun:stun.cloudflare.com:3478'] }];
 const FRAME_W = 640; // one half of the cut-out frame; the frame sent is twice as wide
 const FRAME_H = 360;
 const SEND_EVERY = 1 / 30; // seconds between skeleton messages
 
-/** Pairing messages between two browsers that know the same room code. */
-class Signal {
+/** Pairing messages between two windows of one browser that know the same room code. */
+class BroadcastSignal {
   constructor(/** @type {string} */ code, /** @type {(m: any) => void} */ onMessage) {
+    this.up = true;
     this.ch = new BroadcastChannel(`kcg-room-${code}`);
     this.ch.onmessage = (e) => onMessage(e.data);
   }
@@ -30,11 +31,70 @@ class Signal {
   }
 }
 
+/**
+ * Pairing messages through the Cloudflare function: a WebSocket to the room. Reconnects by itself, so a guest
+ * who arrives before the host (the room does not exist yet) just keeps trying until it does.
+ */
+class SocketSignal {
+  constructor(/** @type {string} */ base, /** @type {string} */ code, /** @type {string} */ role, /** @type {(m: any) => void} */ onMessage) {
+    this.url = `${base.replace(/^http/, 'ws').replace(/\/$/, '')}/room/${code}?role=${role}`;
+    this.onMessage = onMessage;
+    this.up = false;
+    this.closed = false;
+    this.ws = null;
+    this.timer = 0;
+    this._open();
+  }
+  _open() {
+    if (this.closed) return;
+    let ws;
+    try {
+      ws = new WebSocket(this.url);
+    } catch {
+      this.timer = setTimeout(() => this._open(), 2000);
+      return;
+    }
+    this.ws = ws;
+    ws.onopen = () => (this.up = true);
+    ws.onmessage = (e) => {
+      try {
+        this.onMessage(JSON.parse(e.data));
+      } catch {
+        // not one of ours
+      }
+    };
+    ws.onclose = (e) => {
+      if (this.ws !== ws) return;
+      this.ws = null;
+      this.up = false;
+      if (e.code === 4000) this.closed = true; // a newer host took this room over: this page is stale
+      else if (!this.closed) this.timer = setTimeout(() => this._open(), 2000);
+    };
+  }
+  send(/** @type {any} */ m) {
+    if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(m));
+  }
+  close() {
+    this.closed = true;
+    clearTimeout(this.timer);
+    this.ws?.close();
+    this.ws = null;
+    this.up = false;
+  }
+}
+
 export class Family {
-  /** @param {{ canvas: HTMLCanvasElement, search: string, origin?: string }} o */
-  constructor({ canvas, search, origin = '' }) {
+  /**
+   * @param {{ canvas: HTMLCanvasElement, search: string, origin?: string, signal?: string }} o
+   *   signal: URL of the pairing function; empty = two windows on this computer only
+   */
+  constructor({ canvas, search, origin = '', signal = '' }) {
     this.canvas = canvas;
     this.origin = origin;
+    this.signalBase = signal;
+    this.signalOverride = new URLSearchParams(search).has('signal'); // then the guest's link has to carry it too
+    this.iceServers = [];
+    this.iceReady = Promise.resolve();
     /** @type {'off' | 'host' | 'guest'} */
     this.role = 'off';
     this.code = '';
@@ -95,7 +155,29 @@ export class Family {
   }
 
   get link() {
-    return `${this.origin}?room=${this.code}`;
+    return `${this.origin}?room=${this.code}${this.signalOverride ? `&signal=${encodeURIComponent(this.signalBase)}` : ''}`;
+  }
+
+  _signal(/** @type {string} */ code, /** @type {string} */ role, /** @type {(m: any) => void} */ onMessage) {
+    return this.signalBase ? new SocketSignal(this.signalBase, code, role, onMessage) : new BroadcastSignal(code, onMessage);
+  }
+
+  /** The servers that let the connection get through home routers: asked from the pairing function. */
+  _getIce() {
+    if (!this.signalBase) {
+      this.iceServers = []; // two windows on one computer need none
+      return;
+    }
+    this.iceServers = FALLBACK_ICE;
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 4000);
+    this.iceReady = fetch(`${this.signalBase.replace(/^ws/, 'http').replace(/\/$/, '')}/ice`, { signal: ctl.signal })
+      .then((r) => r.json())
+      .then((j) => {
+        if (Array.isArray(j.iceServers) && j.iceServers.length) this.iceServers = j.iceServers;
+      })
+      .catch(() => {})
+      .finally(() => clearTimeout(timer));
   }
 
   /** Key O / button: the host opens a room; anyone in a room leaves it. */
@@ -112,7 +194,8 @@ export class Family {
     this.crowd.reset();
     this.out = this.canvas.captureStream(30); // our finished picture, sent to the guest
     this._getMic();
-    this.sig = new Signal(code, (m) => {
+    this._getIce();
+    this.sig = this._signal(code, 'host', (m) => {
       if (m.from !== 'guest') return;
       // A guest keeps saying hello until it is paired; one that arrives while we are already negotiating is
       // the same guest, not a new one.
@@ -130,7 +213,8 @@ export class Family {
     this.state = 'connecting';
     this.out = this.frame.captureStream(30); // our cut-out, sent to the host
     this._getMic();
-    this.sig = new Signal(code, (m) => m.from === 'host' && this._onSignal(m));
+    this._getIce();
+    this.sig = this._signal(code, 'guest', (m) => m.from === 'host' && this._onSignal(m));
     // The host may not be listening yet: keep saying hello until it answers.
     const hello = () => this.state !== 'connected' && this.sig?.send({ from: 'guest', kind: 'hello' });
     hello();
@@ -198,7 +282,7 @@ export class Family {
 
   _newPc() {
     this._closePc();
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new RTCPeerConnection({ iceServers: this.iceServers });
     this.pc = pc;
     const from = this.role;
     pc.onicecandidate = (e) => e.candidate && this.sig?.send({ from, kind: 'ice', c: e.candidate.toJSON() });
@@ -231,7 +315,7 @@ export class Family {
   // host: a guest said hello; start a connection with the offer
   async _offer() {
     this.offeredAt = performance.now();
-    await this.micReady; // so the offer carries our voice
+    await Promise.all([this.micReady, this.iceReady]); // so the offer carries our voice and the right servers
     const pc = this._newPc();
     this.state = 'connecting';
     this.crowd.reset();
@@ -244,7 +328,7 @@ export class Family {
   async _onSignal(/** @type {any} */ m) {
     if (m.kind === 'offer') {
       if (this.state === 'connected') return; // already paired; a stray hello must not restart it
-      await this.micReady;
+      await Promise.all([this.micReady, this.iceReady]);
       const pc = this._newPc();
       pc.ondatachannel = (e) => this._wire(e.channel);
       await pc.setRemoteDescription(m.d);
@@ -382,7 +466,9 @@ export class Family {
     if (this.role === 'off') return '';
     const ping = (this.state === 'connected' && this.rtt ? `  (${Math.round(this.rtt)} ms)` : '') + (this.muted ? '  mic off' : '') + (this.micFailed ? '  no microphone' : '');
     if (this.role === 'host') {
-      return this.state === 'connected' ? `Family room ${this.code}: connected${ping}` : `Family room ${this.code}: waiting for family. Open ${this.link}`;
+      if (this.state === 'connected') return `Family room ${this.code}: connected${ping}`;
+      if (!this.sig?.up) return `Family room ${this.code}: reaching the pairing service...`;
+      return `Family room ${this.code}: waiting for family. Open ${this.link}`;
     }
     return this.state === 'connected' ? `Playing with family, room ${this.code}${ping}` : `Looking for family room ${this.code}...`;
   }

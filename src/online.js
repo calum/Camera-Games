@@ -8,22 +8,7 @@
 import { COLORS } from './people.js';
 import { computeFeatures } from './tracker.js';
 
-// Letters only, no vowels (no accidental words), no look-alikes: easy to read out over the phone.
-const ALPHABET = 'BCDFGHJKLMNPRSTVWXZ';
-export const CODE_LENGTH = 4;
-
-/** @param {() => number} [rand] */
-export function makeRoomCode(rand = Math.random) {
-  let s = '';
-  for (let i = 0; i < CODE_LENGTH; i++) s += ALPHABET[Math.floor(rand() * ALPHABET.length)];
-  return s;
-}
-
-/** Tidy what a person typed or a link carried; null when it cannot be a code. @param {string | null | undefined} s */
-export function normaliseCode(s) {
-  const t = String(s ?? '').toUpperCase().replace(/[^A-Z]/g, '');
-  return t.length === CODE_LENGTH && [...t].every((c) => ALPHABET.includes(c)) ? t : null;
-}
+export { makeRoomCode, normaliseCode, CODE_LENGTH } from './room-code.js';
 
 /** Remote players get ids from here up, so they can never collide with the host's own. */
 export const REMOTE_ID_BASE = 1000;

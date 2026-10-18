@@ -16,16 +16,16 @@ function kid(id, cx, { airplane = false, look = [0.2, 0.4] } = {}) {
   return { id, px, look };
 }
 
-test('room codes are four easy letters and typed codes are tidied', () => {
+test('room codes are five easy letters and typed codes are tidied', () => {
   for (let i = 0; i < 200; i++) {
     const c = makeRoomCode();
     assert.equal(c.length, CODE_LENGTH);
     assert.match(c, /^[BCDFGHJKLMNPRSTVWXZ]+$/, 'no vowels, so no accidental words');
     assert.equal(normaliseCode(c), c);
   }
-  assert.equal(normaliseCode(' bk-tp '), 'BKTP');
-  assert.equal(normaliseCode('ABCD'), null, 'vowels are not in any code');
-  assert.equal(normaliseCode('BKT'), null);
+  assert.equal(normaliseCode(' bk-tpl '), 'BKTPL');
+  assert.equal(normaliseCode('ABCDE'), null, 'vowels are not in any code');
+  assert.equal(normaliseCode('BKTP'), null);
   assert.equal(normaliseCode(null), null);
 });
 

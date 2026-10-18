@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { spawn } from 'node:child_process';
 import { findBrowser, startServer, makeFakeWebcamFile, launch, openGame, waitForState, wait } from './helpers.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -37,7 +38,7 @@ async function pair(browser, hostQuery, guestQuery) {
   await waitForState(host.page, 'menu', 60000);
   await host.page.keyboard.press('o');
   const code = await host.page.evaluate(() => window.__game.family.code);
-  assert.match(code, /^[BCDFGHJKLMNPRSTVWXZ]{4}$/);
+  assert.match(code, /^[BCDFGHJKLMNPRSTVWXZ]{5}$/);
   const guest = await openGame(browser, `${url}${guestQuery}${guestQuery.includes('?') ? '&' : '?'}room=${code}`, { window: true });
   await waitConnected(host.page, guest.page);
   return { host, guest, code };
@@ -118,5 +119,50 @@ test('FAMILY: a guest who leaves is gone from the host, the host keeps playing',
     assert.deepEqual(host.problems, []);
   } finally {
     await browser.close();
+  }
+});
+
+// The real pairing function, run locally by wrangler (Cloudflare's own tool, which runs the Worker and its
+// Durable Object exactly as Cloudflare does). Not a project dependency, so this test only runs when wrangler is
+// there: set WRANGLER_BIN to it (e.g. after `npm i wrangler` somewhere), or install it in this folder.
+const wranglerBin = process.env.WRANGLER_BIN || [path.join(here, '..', '..', 'node_modules', '.bin', 'wrangler')].find((f) => fs.existsSync(f));
+
+test('FAMILY (Cloudflare pairing function): two windows pair through the real Worker, a stranger is kept out', { skip: skip || (wranglerBin ? false : 'wrangler not installed (set WRANGLER_BIN)') }, async () => {
+  const port = 8788 + Math.floor(Math.random() * 100);
+  const worker = spawn(wranglerBin, ['dev', '--port', String(port), '--ip', '127.0.0.1'], { cwd: path.join(here, '..', '..', 'cloudflare'), env: { ...process.env, WRANGLER_SEND_METRICS: 'false' } });
+  let log = '';
+  worker.stdout.on('data', (d) => (log += d));
+  worker.stderr.on('data', (d) => (log += d));
+  const browser = await launch(exe, AWAKE);
+  try {
+    for (let i = 0; i < 120 && !/Ready on/.test(log); i++) await wait(500);
+    assert.match(log, /Ready on/, 'the pairing function started');
+    const signal = log.match(/Ready on (http:\/\/[^\s]+)/)[1]; // wrangler picks another port when ours is busy
+    const ice = await (await fetch(`${signal}/ice`)).json();
+    assert.ok(ice.iceServers.length >= 1 && ice.iceServers[0].urls[0].startsWith('stun:'), 'STUN servers are offered even without TURN secrets');
+
+    const host = await openGame(browser, `${url}?mouse&signal=${encodeURIComponent(signal)}`, { window: true }); // every page in its own window, or the first tab is hidden once more windows open
+    await waitForState(host.page, 'menu', 60000);
+    await host.page.keyboard.press('o');
+    const code = await host.page.evaluate(() => window.__game.family.code);
+    const link = await host.page.evaluate(() => window.__game.family.link);
+    assert.ok(link.includes('signal='), 'the guest\'s link carries the pairing address when it was set by hand');
+
+    // a guest with the wrong code never gets in; the real guest does
+    const lost = await openGame(browser, `${url}?mouse&room=BCDFG&signal=${encodeURIComponent(signal)}`, { window: true });
+    const guest = await openGame(browser, link.replace(/^[^?]*/, url + '?mouse&').replace('?mouse&?', '?mouse&'), { window: true });
+    await waitConnected(host.page, guest.page);
+    await host.page.waitForFunction(() => window.__game.g.players.some((p) => p.remote), { timeout: 20000 });
+    assert.equal(await lost.page.evaluate(() => window.__game.family.state), 'connecting', 'a wrong code finds nobody');
+
+    // a second guest with the right code is turned away while the first is in
+    const stranger = await openGame(browser, `${url}?mouse&room=${code}&signal=${encodeURIComponent(signal)}`, { window: true });
+    await wait(5000);
+    assert.equal(await stranger.page.evaluate(() => window.__game.family.state), 'connecting');
+    assert.equal(await host.page.evaluate(() => window.__game.family.state), 'connected', 'the family is still connected');
+    assert.equal(await guest.page.evaluate(() => window.__game.family.state), 'connected');
+  } finally {
+    await browser.close();
+    worker.kill();
   }
 });
