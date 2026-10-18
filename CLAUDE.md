@@ -44,7 +44,8 @@ src/cutout.js      browser glue that cuts the kids out of the camera frame
 src/backdrops.js   animated cartoon scene per level (static layer cached, dynamic layer per frame)
 src/art.js         loads optional PNG overrides from assets/ (falls back to emoji / procedural drawing)
 src/draw.js        text, skeleton, hearts, pose icon helpers
-src/audio.js       synthesized sound effects
+src/audio.js       synthesized sound effects (tones + filtered noise, no files), a few per level
+src/ease.js        pure: auto-ease. Misses (g.miss()) and dry spells lower g.diff; a good spell restores it
 ```
 
 Key ideas to preserve:

@@ -17,7 +17,7 @@ const DANCE_POINT = 1; // seconds of dancing per point
 const FROZEN_POINTS = 3;
 const BEAT = 0.4; // seconds per beat of the little tune
 const FEEDBACK_TIME = 1.5;
-const TUNE = [0, 2, 4, 2, 0, 4, 5, 4]; // played on sfx.tick / sfx.pop, just enough to hear the music stop
+const TUNE = [0, 2, 4, 2, 0, 4, 5, 4]; // semitones above C, played on sfx.note: just enough to hear the music stop
 
 /** Is this kid dancing (music on) or wobbling (freeze on)? @param {Player} p @param {'dance'|'freeze'} phase */
 export const isMoving = (p, phase) => (p.motion ?? 0) > (phase === 'dance' ? MOVING : WOBBLE);
@@ -62,7 +62,7 @@ const freeze = {
       this.beat -= dt;
       if (this.beat <= 0) {
         this.beat += BEAT;
-        (TUNE[Math.floor(this.t / BEAT) % TUNE.length] % 2 ? sfx.pop : sfx.tick)();
+        sfx.note(TUNE[Math.floor(this.t / BEAT) % TUNE.length]);
       }
       for (const p of players) {
         if (!isMoving(p, 'dance')) continue;
@@ -78,7 +78,7 @@ const freeze = {
         this.timer = rand(FREEZE_TIME[0], FREEZE_TIME[1]);
         this.t = 0;
         for (const k of this.kids.values()) Object.assign(k, { wobble: 0, cracked: false });
-        sfx.whoosh();
+        sfx.ice();
       }
       return;
     }
@@ -89,12 +89,13 @@ const freeze = {
         const k = this.kid(p);
         if (k.cracked) continue;
         if (isMoving(p, 'freeze')) k.wobble += dt;
-        if (k.wobble >= WOBBLE_FOR) {
+        if (k.wobble >= WOBBLE_FOR / (g.ease ?? 1)) { // auto-ease (ease.js): more wobble allowed
           k.cracked = true;
           p.flashUntil = g.now + 0.7;
           p.flashColor = '#ff5a5a';
           g.burst(p.cx, p.sh.y, '#bfeaff', 20);
-          sfx.splash();
+          sfx.crack();
+          g.miss();
           this.say(p, g, 'WOBBLE!', '#ff6b6b');
         }
       }

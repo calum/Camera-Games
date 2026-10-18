@@ -81,7 +81,8 @@ const avalanche = {
     this.invul = INVUL;
     g.team.hearts--;
     g.burst(x, y, '#ff5a3a', 24);
-    sfx.boom();
+    sfx.bonk();
+    g.miss();
     if (g.team.hearts <= 0) g.endLevel('Oh no, out of hearts! Try again!');
     return true;
   },
@@ -111,7 +112,7 @@ const avalanche = {
     if (!this.big && !this.bigDone && this.elapsed >= DURATION - BIG_BEFORE_END) {
       const w = g.W * BIG_GAP;
       this.big = { t: 0, gapW: w, gapX: rand(w / 2 + 0.04 * g.W, g.W - w / 2 - 0.04 * g.W), judged: false };
-      sfx.whoosh();
+      sfx.rumble();
     }
     const bigBusy = !!this.big;
 
@@ -139,7 +140,7 @@ const avalanche = {
     for (const r of this.rocks) {
       if (r.warn > 0) {
         r.warn -= dt;
-        if (r.warn <= 0) sfx.whoosh();
+        if (r.warn <= 0) sfx.whistle();
         continue;
       }
       r.y += r.vy * dt;
@@ -172,7 +173,7 @@ const avalanche = {
       if (!r.dead && r.y > g.H + r.r) {
         r.dead = true;
         g.score(null, 1, r.x, g.H - 120 * u);
-        sfx.tick();
+        sfx.thud();
       }
     }
     this.rocks = this.rocks.filter((r) => !r.dead);
@@ -188,7 +189,7 @@ const avalanche = {
     for (const b of this.boulders) {
       const before = b.t;
       b.t += dt;
-      for (const mark of [-1.2, -0.6, 0]) if (before < mark && b.t >= mark) (mark === 0 ? sfx.go : sfx.tick)();
+      for (const mark of [-1.2, -0.6, 0]) if (before < mark && b.t >= mark) (mark === 0 ? sfx.roll : sfx.tick)();
       if (b.t < 0) continue;
       const prog = b.t / BOULDER_TIME;
       const span = g.W + 2 * BOULDER_R * u * 2;
@@ -208,7 +209,7 @@ const avalanche = {
         if (ok) {
           g.score(p, 1, p.hip.x, p.sh.y - 120 * u);
           g.burst(p.hip.x, g.H - 150 * u, '#4dff88', 18);
-          sfx.star();
+          sfx.boing();
           this.say(p, g, '✓ NICE JUMP!', '#4dff88', { x: p.hip.x });
         } else {
           p.hitUntil = g.now + 0.8;
@@ -227,7 +228,7 @@ const avalanche = {
       for (const mark of [BIG_WARN - 2, BIG_WARN - 1]) if (before < mark && big.t >= mark) sfx.tick();
       if (!big.judged && big.t >= BIG_WARN + BIG_FALL) {
         big.judged = true;
-        sfx.boom();
+        sfx.kaboom();
         const safe = [];
         for (const p of players) {
           if (inGap(p.cx, big.gapX, big.gapW)) {
@@ -241,6 +242,7 @@ const avalanche = {
             g.burst(p.cx, g.H - 120 * u, '#c9b8a8', 22);
             p.flashUntil = g.now + 0.7;
             p.flashColor = '#ff5a5a';
+            g.miss();
             this.say(p, g, 'SPLAT!', '#ff6b6b', { sub: 'get in the gap next time!' });
           }
         }
