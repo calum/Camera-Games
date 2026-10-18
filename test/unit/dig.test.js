@@ -1,7 +1,7 @@
 // Unit tests for Dig Down, driven with a fake game object and fake players (no browser).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import dig, { makeRow, pickColumn, layerAt } from '../../src/levels/dig.js';
+import dig, { makeRow, pickColumn, brick, COLS, LAYERS } from '../../src/levels/dig.js';
 
 function makeG(players = []) {
   return {
@@ -28,6 +28,7 @@ function makeG(players = []) {
 }
 
 // Columns are 384 px wide at 1920: column 0 is centred at 192, column 2 at 960.
+const colX = (c) => (c + 0.5) * 384;
 function kid(over = {}) {
   const x = over.x ?? 960;
   return {
@@ -40,17 +41,6 @@ function kid(over = {}) {
     lastJump: -99,
     ...over,
   };
-}
-
-const brick = (hp = 1, prize = null) => ({ hp, max: hp, prize, broken: false, shake: 0 });
-const row = (hps, prizes = []) => ({ depth: 0, layer: layerAt(0), bricks: hps.map((hp, i) => brick(hp, prizes[i] ?? null)), crumble: -1 });
-
-function setup(players, hps = [1, 1, 1, 1, 1], prizes) {
-  const g = makeG(players);
-  dig.start(g);
-  dig.rows[0] = row(hps, prizes);
-  run(g, 0.1); // the level sees everyone standing before the first jump
-  return g;
 }
 
 // Advance the game; `air` is a set of player ids that are in the air (lastJump refreshed each frame).
@@ -68,77 +58,130 @@ function jump(g, ids) {
   run(g, 0.7);
 }
 
+// A level with a hand-made mine: rows[r] is a string of COLS letters,
+// d = dirt (1 hit), s = stone (2), m = metal, t = TNT, g = gem (dirt + gem), c = chest, . = already dug
+function setup(players, rows) {
+  const g = makeG(players);
+  dig.start(g);
+  const types = { d: () => brick('dirt', 1), s: () => brick('dirt', 2), m: () => brick('metal', Infinity), t: () => brick('tnt', 1), g: () => brick('dirt', 1, 'gem'), c: () => brick('chest', 3, 'chest'), '.': () => ({ ...brick('dirt', 1), broken: true }) };
+  rows.forEach((s, r) => {
+    dig.rows[r].bricks = [...s].map((ch) => types[ch]());
+  });
+  run(g, 0.1); // the level sees everyone standing before the first jump
+  return g;
+}
+
+const at = (c, r) => dig.rows[r].bricks[c];
+const kidOf = (id) => dig.kids.get(id);
+
 test('dig: a jump breaks the brick under the kid and scores 1; standing still does nothing', () => {
   const p = kid();
-  const g = setup([p]);
+  const g = setup([p], ['ddddd', 'ddddd']);
   run(g, 2);
   assert.equal(p.score, 0);
-  assert.equal(dig.rows[0].bricks[2].broken, false);
+  assert.equal(at(2, 0).broken, false);
   jump(g, [1]);
-  assert.equal(dig.rows[0].bricks[2].broken, true);
+  assert.equal(at(2, 0).broken, true);
   assert.equal(p.score, 1);
+  run(g, 0.5);
+  assert.equal(kidOf(1).y, 0, 'dropped into the hole they dug');
 });
 
 test('dig: staying in the air for a long time is one stomp, not one per frame', () => {
-  const p = kid();
-  const g = setup([p], [3, 3, 3, 3, 3]);
+  const g = setup([kid()], ['sssss', 'sssss']);
   run(g, 1.5, new Set([1]));
   run(g, 0.5);
-  assert.equal(dig.rows[0].bricks[2].hp, 2);
+  assert.equal(at(2, 0).hp, 1);
 });
 
 test('dig: an old jump from before the level started does not count', () => {
   const p = kid({ lastJump: 5 });
-  const g = setup([p]);
+  const g = makeG([p]);
   g.now = 5.1;
+  dig.start(g);
   run(g, 1);
-  assert.equal(dig.rows[0].bricks[2].broken, false);
+  assert.equal(at(2, 0).broken, false);
 });
 
 test('dig: a stone brick takes two stomps', () => {
-  const p = kid();
-  const g = setup([p], [2, 2, 2, 2, 2]);
+  const g = setup([kid()], ['sssss', 'sssss']);
   jump(g, [1]);
-  assert.equal(dig.rows[0].bricks[2].broken, false);
-  assert.equal(dig.rows[0].bricks[2].hp, 1);
+  assert.equal(at(2, 0).broken, false);
   jump(g, [1]);
-  assert.equal(dig.rows[0].bricks[2].broken, true);
+  assert.equal(at(2, 0).broken, true);
 });
 
-test('dig: a gem brick is worth 1 + 3, a treasure chest 1 + 10', () => {
-  const a = kid({ id: 1, x: 192 });
-  const b = kid({ id: 2, x: 960 });
-  const g = setup([a, b], [1, 1, 1, 1, 1], ['gem', null, 'chest']);
+test('dig: a gem brick is worth 1 + 3, a treasure chest 3 stomps and 1 + 10', () => {
+  const a = kid({ id: 1, x: colX(0) });
+  const b = kid({ id: 2, x: colX(2) });
+  const g = setup([a, b], ['gdcdd', 'ddddd']);
   jump(g, [1, 2]);
+  jump(g, [2]);
+  jump(g, [2]);
   assert.deepEqual([a.score, b.score], [4, 11]);
 });
 
-test('dig: after 3 bricks break the rest crumble, the team drops a row and gets their prizes', () => {
-  const kids = [kid({ id: 1, x: 192 }), kid({ id: 2, x: 576 }), kid({ id: 3, x: 960 })];
-  const g = setup(kids, [1, 1, 1, 2, 2], [null, null, null, 'gem', null]);
-  const next = dig.rows[1];
-  jump(g, [1, 2, 3]);
-  assert.equal(dig.depth, 1, 'dropped one row');
-  assert.equal(dig.rows[0], next, 'the next row is now under their feet');
-  assert.equal(dig.rows.length, 6, 'a new row was added at the bottom');
-  assert.equal(g.team.score, 3 + 3, '3 bricks + the gem left in the crumbled row');
-});
-
-test('dig: a kid who never moves still digs, because cracks spread from a hole to the nearest brick', () => {
+test('dig: metal bricks never break, however many times you stomp', () => {
   const p = kid();
-  const g = setup([p]);
-  for (let i = 0; i < 3; i++) jump(g, [1]);
-  assert.equal(dig.depth, 1);
-  for (let i = 0; i < 3; i++) jump(g, [1]);
-  assert.equal(dig.depth, 2);
+  const g = setup([p], ['ddmdd', 'ddddd']);
+  for (let i = 0; i < 5; i++) jump(g, [1]);
+  assert.equal(at(2, 0).broken, false);
+  assert.equal(p.score, 0);
+  assert.equal(kidOf(1).y, -1);
 });
 
-test('dig: two kids on the same brick break it twice as fast', () => {
-  const a = kid({ id: 1, x: 900 });
-  const b = kid({ id: 2, x: 1000 });
-  const g = setup([a, b], [2, 2, 2, 2, 2]);
-  jump(g, [1, 2]);
-  assert.equal(dig.rows[0].bricks[2].broken, true);
+test('dig: stepping sideways into a wall and jumping climbs up one brick at a time', () => {
+  const p = kid();
+  const g = setup([p], ['ddddd', 'ddddd', 'ddddd']);
+  jump(g, [1]);
+  jump(g, [1]); // two rows down in column 2
+  run(g, 0.5);
+  assert.equal(kidOf(1).y, 1);
+  p.cx = colX(3); // step into the undug column: inside its brick at row 1
+  run(g, 0.5);
+  assert.equal(kidOf(1).col, 3);
+  jump(g, [1]);
+  assert.equal(kidOf(1).y, 0, 'climbed, nothing broken');
+  assert.equal(at(3, 1).broken, false);
+  jump(g, [1]);
+  assert.equal(kidOf(1).y, -1, 'back on the surface');
+  jump(g, [1]);
+  assert.equal(at(3, 0).broken, true, 'on top of the column, a jump digs again');
+});
+
+test('dig: walking over a shaft someone else dug drops you down it', () => {
+  const a = kid({ id: 1, x: colX(1) });
+  const b = kid({ id: 2, x: colX(3) });
+  const g = setup([a, b], ['ddddd', 'ddddd', 'ddddd']);
+  jump(g, [1]);
+  jump(g, [1]);
+  run(g, 0.5);
+  b.cx = colX(1);
+  run(g, 1);
+  assert.equal(kidOf(2).y, 1, 'fell to the bottom of the shaft');
+});
+
+test('dig: TNT goes off a moment after the stomp and takes the bricks beside and below with it, not metal', () => {
+  const p = kid();
+  const g = setup([p], ['dgtmd', 'ddsdd', 'ddddd']);
+  run(g, 0.3, new Set([1]));
+  run(g, 0.2); // the stomp has landed, the fuse is burning
+  assert.equal(at(2, 0).fuse > 0, true, 'fuse is burning');
+  assert.equal(at(2, 0).broken, false);
+  run(g, 1);
+  assert.equal(at(2, 0).broken, true);
+  assert.equal(at(1, 0).broken, true, 'left');
+  assert.equal(at(2, 1).broken, true, 'below');
+  assert.equal(at(3, 0).broken, false, 'metal on the right survives');
+  assert.equal(at(0, 0).broken, false, 'two away is out of range');
+  assert.equal(p.score, 1 + 4 + 1, 'the kid who lit it gets the gem');
+});
+
+test('dig: TNT sets off TNT next to it', () => {
+  const g = setup([kid()], ['dtttd', 'ddddd']);
+  jump(g, [1]);
+  run(g, 1);
+  assert.deepEqual([0, 1, 2, 3, 4].map((c) => at(c, 0).broken), [true, true, true, true, true]);
 });
 
 test('dig: a wobble across a brick edge keeps the same brick; a real step moves to the next', () => {
@@ -151,25 +194,49 @@ test('dig: a wobble across a brick edge keeps the same brick; a real step moves 
   assert.equal(pickColumn(5000, W), 4);
 });
 
-test('dig: rows get tougher deeper down, and every 6th row hides one treasure chest', () => {
-  assert.equal(makeRow(0).bricks.every((b) => b.hp === 1), true, 'the surface is easy');
-  assert.ok(makeRow(40).bricks.every((b) => b.hp >= 2), 'deep rock is tough');
-  for (let d = 0; d < 18; d++) {
-    const chests = makeRow(d).bricks.filter((b) => b.prize === 'chest').length;
-    assert.equal(chests, (d + 1) % 6 === 0 ? 1 : 0, `row ${d}`);
+test('dig: the surface is plain dirt; metal and TNT only turn up deeper, never blocking a whole row', () => {
+  for (let i = 0; i < 50; i++) assert.ok(makeRow(0).bricks.every((b) => b.kind === 'dirt' && b.hp === 1));
+  const kinds = new Set();
+  for (let r = 0; r < 60; r++) {
+    const row = makeRow(r);
+    for (const b of row.bricks) kinds.add(b.kind);
+    const metal = row.bricks.map((b) => b.kind === 'metal');
+    assert.ok(metal.filter(Boolean).length <= 2, `row ${r}: too much metal`);
+    for (let c = 1; c < COLS; c++) assert.ok(!(metal[c] && metal[c - 1]), `row ${r}: metal side by side`);
   }
+  assert.ok(kinds.has('metal') && kinds.has('tnt') && kinds.has('chest'));
+});
+
+test('dig: deep down, a prize under a metal cap always has TNT beside it', () => {
+  const deep = LAYERS.findIndex((l) => l.puzzle) * 3;
+  let found = 0;
+  for (let i = 0; i < 20; i++) {
+    const r = Math.ceil(deep / 4) * 4 + 4 * (i % 3);
+    const cap = makeRow(r);
+    const c = cap.next.prizeCol;
+    if (c === undefined) continue;
+    found++;
+    assert.equal(cap.bricks[c].kind, 'metal');
+    const below = makeRow(r + 1, cap.next);
+    assert.ok(below.bricks[c].prize, 'prize under the cap');
+    assert.ok(below.bricks[c - 1]?.kind === 'tnt' || below.bricks[c + 1]?.kind === 'tnt', 'TNT next to it');
+  }
+  assert.ok(found > 0);
 });
 
 test('dig: survives a long run with no players, 3 players and players coming and going', () => {
   const g = makeG([]);
   dig.start(g);
-  for (let i = 0; i < 60 * 50; i++) {
+  for (let i = 0; i < 60 * 70; i++) {
     g.now += 1 / 60;
     if (i === 300) g.players = [kid({ id: 1, x: 300 }), kid({ id: 2, x: 960 }), kid({ id: 3, x: 1700 })];
     if (i === 2000) g.players = [g.players[1]];
-    for (const p of g.players) if (i % 50 < 15) p.lastJump = g.now;
+    for (const p of g.players) {
+      if (i % 50 < 15) p.lastJump = g.now;
+      if (i % 400 === 0) p.cx = colX(Math.floor(Math.random() * COLS));
+    }
     dig.update(g, 1 / 60);
   }
-  assert.ok(dig.depth >= 5, `dug ${dig.depth} rows`);
+  assert.ok(dig.deepest >= 4, `dug to row ${dig.deepest}`);
   assert.equal(g.levelEnd, null, 'digging never fails');
 });
