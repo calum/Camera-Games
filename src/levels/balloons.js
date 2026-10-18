@@ -6,6 +6,7 @@
 import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
 import { text } from '../draw.js';
+import { rand } from './kit.js';
 
 const GRAVITY = 170; // u/s^2: floaty, so little arms have time
 const MAX_FALL = 240; // u/s: air drag caps the fall speed
@@ -23,7 +24,6 @@ const FLOOR = 40; // u above the bottom of the screen counts as the floor
 const STREAK_POINTS = 5; // every 5 s with no balloon dropped = +1 team point
 const COLORS = ['#ff5a7a', '#4db8ff', '#ffd24d', '#6fe06f', '#b36bff', '#ff9a3d'];
 
-const rand = (a, b) => a + Math.random() * (b - a);
 
 // How many balloons should be up after `elapsed` seconds with `kids` players.
 export const balloonTarget = (elapsed, kids) =>

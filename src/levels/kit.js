@@ -1,5 +1,6 @@
 // Small helpers shared by the levels, so each level file stays about its own idea. See docs/ADDING-GAMES.md.
-/** @import { Player, Level } from '../types.js' */
+/** @import { Player, Level, Game } from '../types.js' */
+import { sfx } from '../audio.js';
 
 export const rand = (/** @type {number} */ a, /** @type {number} */ b) => a + Math.random() * (b - a);
 /** @template T @param {T[]} arr @returns {T} */
@@ -8,7 +9,7 @@ export const clamp = (/** @type {number} */ v, /** @type {number} */ lo, /** @ty
 
 /**
  * The first player whose hand is within `r + slack` of (x, y), or null. Hands are wrists and index fingertips.
- * The slack is deliberately generous: kids are small and tracking is noisy (CLAUDE.md, pitfall 7).
+ * The slack is deliberately generous: kids are small and tracking is noisy (CLAUDE.md, pitfall 8).
  * @param {Player[]} players  pass g.activePlayers()
  * @param {number} x
  * @param {number} y
@@ -33,6 +34,23 @@ export function handTouching(players, x, y, r, slack = 0) {
 export function bodyHit(players, x, y, r) {
   for (const p of players) if (p.circles.some((c) => Math.hypot(c.x - x, c.y - y) < r + c.r * 0.8)) return p;
   return null;
+}
+
+/**
+ * Something hit a kid: the team loses a heart (with a bonk and a burst at x, y), the auto-ease hears about it,
+ * and the level ends when the hearts run out. `p` (the kid who was hit) flashes for a moment.
+ * @param {Game} g
+ * @param {Player | null} p
+ * @param {number} x
+ * @param {number} y
+ */
+export function loseHeart(g, p, x, y) {
+  if (p) p.hitUntil = g.now + 0.8;
+  g.team.hearts--;
+  g.burst(x, y, '#ff5a3a', 24);
+  sfx.bonk();
+  g.miss();
+  if (g.team.hearts <= 0) g.endLevel('Oh no, out of hearts! Try again!');
 }
 
 /**

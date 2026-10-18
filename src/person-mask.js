@@ -174,6 +174,7 @@ export class PersonMask {
     // 4. fuse: pose silhouette, or motion near a known person (union)
     const tau = poseActive ? o.tauActive : o.tauLost;
     const decay = Math.exp(-dt / tau);
+    const learn = 1 - Math.exp(-dt / (globalChange ? 0.3 : o.bgTau)); // the same for every pixel: worked out once
     let cover = 0;
     for (let i = 0; i < n; i++) {
       const gate = smoothstep(0.1, 0.3, near[i]);
@@ -195,7 +196,7 @@ export class PersonMask {
       // 5. learn the background wherever nobody is (slowly; fast right after a global change)
       if (conf[i] < 0.1) {
         if (bgSeen[i] === 0) bg[i] = gray[i];
-        else bg[i] += (gray[i] - offset - bg[i]) * (1 - Math.exp(-dt / (globalChange ? 0.3 : o.bgTau)));
+        else bg[i] += (gray[i] - offset - bg[i]) * learn;
         bgSeen[i] += dt;
       }
       cover += conf[i] > 0.5 ? 1 : 0;

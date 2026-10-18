@@ -8,6 +8,7 @@ import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
 import { drawArt } from '../art.js';
 import { text } from '../draw.js';
+import { rand, pick, clamp, bodyHit, loseHeart } from './kit.js';
 
 const DURATION = 45;
 const WARN = 0.9; // seconds of red "!" column before a rock falls
@@ -31,9 +32,6 @@ const BIG_GAP = 0.25; // safe gap width as a fraction of the screen
 const BIG_PTS = 3;
 const FEEDBACK_TIME = 1.7;
 
-const rand = (a, b) => a + Math.random() * (b - a);
-const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
-const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
 
 // How far a rock's edge is from the nearest body circle (negative = touching, same 0.8 rule as a hit).
 export function rockGap(rock, circles) {
@@ -80,11 +78,7 @@ const avalanche = {
   loseHeart(g, x, y) {
     if (this.invul > 0) return false;
     this.invul = INVUL;
-    g.team.hearts--;
-    g.burst(x, y, '#ff5a3a', 24);
-    sfx.bonk();
-    g.miss();
-    if (g.team.hearts <= 0) g.endLevel('Oh no, out of hearts! Try again!');
+    loseHeart(g, null, x, y);
     return true;
   },
 
@@ -162,13 +156,11 @@ const avalanche = {
         }
       }
       if (this.invul <= 0) {
-        for (const p of players) {
-          if (p.circles.some((c) => Math.hypot(c.x - r.x, c.y - r.y) < r.r + c.r * 0.8)) {
-            r.dead = true;
-            p.hitUntil = g.now + 0.8;
-            this.loseHeart(g, r.x, r.y);
-            break;
-          }
+        const p = bodyHit(players, r.x, r.y, r.r);
+        if (p) {
+          r.dead = true;
+          p.hitUntil = g.now + 0.8;
+          this.loseHeart(g, r.x, r.y);
         }
       }
       if (!r.dead && r.y > g.H + r.r) {

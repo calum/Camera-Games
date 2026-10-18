@@ -129,6 +129,7 @@ export class Family {
     this.half.height = FRAME_H;
     this.hx = this.half.getContext('2d');
     this.hasGuest = false; // host: guestCut holds a picture
+    /** @type {ImageData | null} */ this.guestPixels = null;
     this.seq = 0;
     this.sentAt = 0;
     this.cutAt = -Infinity;
@@ -402,7 +403,8 @@ export class Family {
     }
     this.sx.drawImage(v, 0, 0);
     const src = this.sx.getImageData(0, 0, w * 2, h);
-    const out = this.gx.createImageData(w, h);
+    if (this.guestPixels?.width !== w || this.guestPixels.height !== h) this.guestPixels = this.gx.createImageData(w, h);
+    const out = this.guestPixels; // reused: a fresh one every video frame is ~1 MB of garbage
     decodeDoubleWide(src.data, w, h, out.data);
     this.gx.putImageData(out, 0, 0);
     this.hasGuest = true;

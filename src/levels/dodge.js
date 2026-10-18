@@ -3,7 +3,7 @@
 import { sfx } from '../audio.js';
 import { drawArt } from '../art.js';
 import { text } from '../draw.js';
-import { rand, pick, bodyHit } from './kit.js';
+import { rand, pick, bodyHit, loseHeart } from './kit.js';
 
 /** @satisfies {Level} */
 const dodge = {
@@ -57,12 +57,7 @@ const dodge = {
         if (p) {
           r.dead = true;
           this.invul = 1;
-          p.hitUntil = g.now + 0.8;
-          g.team.hearts--;
-          g.burst(r.x, r.y, '#ff5a3a', 24);
-          sfx.bonk();
-          g.miss();
-          if (g.team.hearts <= 0) g.endLevel('Oh no, out of hearts! Try again!');
+          loseHeart(g, p, r.x, r.y);
         }
       }
       if (!r.dead && r.y > g.H + r.r) {

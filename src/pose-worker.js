@@ -6,13 +6,10 @@
 // This is a CLASSIC worker (not type: 'module'): MediaPipe's loader uses importScripts(), which module
 // workers don't allow. Our own modules are loaded with dynamic import() instead, which classic workers support.
 
-/** @type {typeof import('./person-mask.js').downsampleMaxInto} */
-let downsampleMaxInto;
+/** @type {typeof import('./pose-shared.js')} */
+let shared;
 /** @type {typeof import('./look.js').lookOf} */
 let lookOf;
-
-const MASK_W = 256;
-const LOOK_W = 96;
 
 let landmarker = null;
 let make = null;
@@ -20,27 +17,19 @@ let delegate = 'GPU';
 let modelName = 'full';
 let masks = true;
 let busy = false;
-const look = new OffscreenCanvas(LOOK_W, 54);
-const lctx = look.getContext('2d', { willReadFrequently: true });
+let look = null;
+let lctx = null;
 
 async function init({ base, model, masks: withMasks = true }) {
   masks = withMasks;
-  ({ downsampleMaxInto } = await import(new URL('./person-mask.js', base).href));
+  shared = await import(new URL('./pose-shared.js', base).href);
   ({ lookOf } = await import(new URL('./look.js', base).href));
   const { FilesetResolver, PoseLandmarker } = await import(new URL('../vendor/vision_bundle.mjs', base).href);
   const fileset = await FilesetResolver.forVisionTasks(new URL('../vendor/wasm', base).href);
   make = (del, name, withMasks) =>
-    PoseLandmarker.createFromOptions(fileset, {
-      baseOptions: { modelAssetPath: new URL(`../models/pose_landmarker_${name}.task`, base).href, delegate: del },
-      runningMode: 'VIDEO',
-      numPoses: 4,
-      outputSegmentationMasks: withMasks, // person silhouettes for the cut-out (~6-9ms extra per frame)
-      // Lower than the defaults (0.5): kids are less common in the model's training data, so it is less sure
-      // about them and would otherwise drop them for a few frames.
-      minPoseDetectionConfidence: 0.35,
-      minPosePresenceConfidence: 0.35,
-      minTrackingConfidence: 0.35,
-    });
+    PoseLandmarker.createFromOptions(fileset, shared.landmarkerOptions(new URL(`../models/pose_landmarker_${name}.task`, base).href, del, withMasks));
+  look = new OffscreenCanvas(shared.LOOK_W, 54);
+  lctx = look.getContext('2d', { willReadFrequently: true });
   modelName = model;
   try {
     landmarker = await make('GPU', model, masks);
@@ -61,7 +50,8 @@ async function setModel({ model, masks: withMasks }) {
   masks = withMasks;
 }
 
-function detect({ bitmap, ts, maskW = MASK_W }) {
+function detect({ bitmap, ts, maskW = shared.MASK_W }) {
+  const LOOK_W = shared.LOOK_W;
   const t0 = performance.now();
   let res;
   try {
@@ -78,19 +68,7 @@ function detect({ bitmap, ts, maskW = MASK_W }) {
   const landmarks = res.landmarks.map((lm) => lm.map((l) => ({ x: l.x, y: l.y, visibility: l.visibility })));
   const looks = res.landmarks.map((lm) => lookOf(rgba, LOOK_W, lh, lm));
   // masks: all people merged into one small float array
-  let mask = null;
-  let maskH = 0;
-  if (res.segmentationMasks?.length) {
-    maskH = Math.round((maskW * bitmap.height) / bitmap.width);
-    mask = new Float32Array(maskW * maskH);
-    for (const m of res.segmentationMasks) {
-      try {
-        downsampleMaxInto(m.getAsFloat32Array(), m.width, m.height, mask, maskW, maskH);
-      } finally {
-        m.close();
-      }
-    }
-  }
+  const { mask, maskH } = shared.mergeMasks(res.segmentationMasks, maskW, bitmap.width, bitmap.height);
   bitmap.close();
   return { landmarks, looks, mask, maskW, maskH, ms: performance.now() - t0, delegate, modelName };
 }

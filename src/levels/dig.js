@@ -15,6 +15,7 @@
 import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
 import { text } from '../draw.js';
+import { rand } from './kit.js';
 
 export const COLS = 5; // bricks across the screen: wide on purpose, kids drift while jumping
 const ROW_H = 150; // brick height in u
@@ -41,7 +42,6 @@ export const LAYERS = [
   { name: 'Deep rock', top: '#8a5050', fill: '#5a3030', dark: '#341a1a', hp: [2, 3], gem: 0.25, tnt: 0.15, metal: 0.25, puzzle: true },
 ];
 
-const rand = (a, b) => a + Math.random() * (b - a);
 const randInt = (a, b) => Math.floor(rand(a, b + 1));
 const PRIZE_PTS = { gem: 3, bone: 3, chest: 10 };
 const PRIZE_ICON = { gem: '💎', bone: '🦴', chest: '💰' };
