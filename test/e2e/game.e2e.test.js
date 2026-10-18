@@ -915,6 +915,28 @@ test('SMOOTH DRAWING: the pose model runs in a worker, so the game keeps drawing
   }
 });
 
+// The on-screen debug panel was hidden behind the game's own text, so ?debug also prints a line a grown-up can
+// copy from the console (F12 > Console) when reporting lag.
+test('DEBUG: ?debug prints a copyable summary of tracking to the console', { skip }, async () => {
+  const browser = await launch(exe, camArgs());
+  try {
+    const { page, problems } = await openGame(browser, url + '?debug&model=full');
+    const logs = [];
+    page.on('console', (m) => m.text().startsWith('[kids-camera-games debug]') && logs.push(m.text()));
+    await waitForState(page, 'menu', 60000);
+    await page.waitForFunction(() => window.__game.tracker.frameSeq > 0, { timeout: 60000 });
+    const t0 = Date.now();
+    while (logs.length < 2 && Date.now() - t0 < 30000) await wait(500);
+    const line = logs.at(-1) ?? '';
+    for (const part of [/fps \d+/, /tracked [\d.]+\/s/, /round trip \d+ ms/, /tracking (GPU|CPU), worker, high \(full\)/, /camera .*\d+x\d+/, /gpu /])
+      assert.match(line, part);
+    assert.doesNotMatch(line, /tracked 0\/s/, 'tracking is counted');
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
 test('MAIN-THREAD FALLBACK: with ?worker=off the pose model runs on the main thread and still finds the person', { skip }, async () => {
   const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
   try {
