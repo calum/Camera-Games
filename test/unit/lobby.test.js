@@ -82,3 +82,35 @@ test('reset forgets everyone', () => {
   assert.equal(l.progress, 0);
   assert.deepEqual(l.joined, []);
 });
+
+// ---- joining mid-game -------------------------------------------------------------------------------
+import { lateJoin } from '../../src/lobby.js';
+
+test('mid-game: a watcher who holds their arms out for 2 s joins; walking past does not', () => {
+  const walker = { excluded: true, pose: { airplane: false } };
+  for (let i = 0; i < 300; i++) assert.equal(lateJoin(walker, 1 / 30), false);
+  assert.equal(walker.excluded, true, 'a passer-by never joins');
+
+  const kid = { excluded: true, pose: { airplane: true } };
+  let joinedAt = null;
+  for (let i = 0; i < 90 && joinedAt === null; i++) if (lateJoin(kid, 1 / 30)) joinedAt = i / 30;
+  assert.ok(joinedAt > 1.9 && joinedAt < 2.1, `joined after ~2 s (${joinedAt})`);
+  assert.equal(kid.excluded, false);
+});
+
+test('mid-game: one glitchy frame does not reset a kid who is joining', () => {
+  const kid = { excluded: true, pose: { airplane: true } };
+  for (let i = 0; i < 45; i++) lateJoin(kid, 1 / 30);
+  kid.pose.airplane = false;
+  lateJoin(kid, 1 / 30);
+  kid.pose.airplane = true;
+  let n = 0;
+  while (!lateJoin(kid, 1 / 30)) n++;
+  assert.ok(n < 20, `only a little extra hold needed (${n} frames)`);
+});
+
+test('mid-game: players who are already playing are left alone', () => {
+  const p = { excluded: false, pose: { airplane: true } };
+  assert.equal(lateJoin(p, 5), false);
+  assert.equal(p.excluded, false);
+});

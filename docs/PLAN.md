@@ -23,6 +23,12 @@ Each plan has one job; follow the link rather than looking for the detail here.
 
 ## Key decision: web first, Rust later (if ever)
 
+Reviewed again in October 2026 with phones, tablets and GitHub Pages in mind: still plain JavaScript. The pose
+model is already WebAssembly + WebGL, so Rust would not speed up the expensive part, and a build step would
+slow down making levels. JSDoc types checked by `tsc` (`npm run typecheck`) give most of TypeScript's safety
+with no build. No backend: inference on the device is faster, free and private, so the game is a static site.
+
+
 The expensive part is body tracking (a neural network), not the game. MediaPipe's pose
 model runs in the browser through WASM/WebGL whatever language the game is written in.
 So the game is plain JavaScript on a canvas: no build step, and it runs on every
@@ -88,23 +94,35 @@ code changes. See `assets/README.md`. New art types are one line in `src/art.js`
   That is comfortable at 30 fps.
 * **Raspberry Pi 5:** expect about 15-25 fps tracking. Use `?lite` to drop glow effects.
   The game keeps drawing at 60 fps between tracking updates. A Pi 4 is borderline.
-* **Phone / iPad:** open the same page. It needs the server reachable over HTTPS (or
-  localhost) for camera access. This is not set up yet.
+* **Phone / iPad:** open https://calum.github.io/kids-camera-games/ (HTTPS, so the camera is allowed).
+  Phones and tablets start on the lite model without glow effects, tracking runs in a worker so drawing
+  stays smooth, the screen is kept awake, and tapping shows the grown-up buttons.
 
 ## Roadmap
 
 - [x] **M1: playable demo** (this repo): 4 levels, multi-kid, mouse fallback, offline.
 - [ ] **M2: playtest with the kids.** Tune hit sizes, jump sensitivity, level length, spawn rates.
-      The constants are at the top of each level in `levels.js` and in `computeFeatures` in `tracker.js`.
+      The constants are at the top of each level file in `src/levels/` and in `computeFeatures` in `tracker.js`.
+      Findings so far (October 2026): favourites are Dodge the rocks, then Jump the waves, then Pop the bubbles;
+      Dance party (holding still poses) is the least liked. The dog was sometimes detected as a player and a
+      parent walking past joined for a few seconds: fixed by probation, mid-game watching and recognising
+      returning kids (`src/people.js`).
 - [ ] **M3: our art and sound.** Replace the placeholder graphics, add music and voice cheers.
-- [ ] **M4: more levels.** Ideas: freeze dance, copy-the-leader, kick the ball, catch falling stars
-      in a basket (both hands), whack-a-mole with the feet, sleeping-dragon sneak.
+- [ ] **M4: more levels.** Adding one is a single file: see [ADDING-GAMES.md](ADDING-GAMES.md).
+      The kids like whole-body action (dodging, jumping) far more than holding poses, so favour:
+      duck-and-jump obstacle run (low branches to duck, logs to jump), meteor shower with lanes (run left and
+      right), jump-to-stomp (bricks, puddles), catch falling stars in a basket (both hands), kick the ball,
+      whack-a-mole with the feet, freeze dance (move, then freeze when the music stops), sleeping-dragon sneak.
+      A mixed "dodge and jump" level could combine the two favourites. Rework Dance party to be more active
+      (poses to the beat, shorter holds) or drop it from the default list.
 - [x] **M5a: cut-out + cartoon worlds** (pose silhouette + motion safety net, a backdrop per level).
 - [ ] **M5b: silhouette-only gameplay** (use the silhouette itself, not just the skeleton) for big groups and for kids who are too close
       or too small for skeleton tracking.
 - [ ] **M6: Raspberry Pi kiosk.** Chromium in kiosk mode on boot, or a native Rust port if the browser is too slow.
 - [x] **M7a: phone as a webcam.** Camera picker (C), remembered choice, 16:9 full-field-of-view request, slow-camera fallback, portrait warning. Works with any phone-as-webcam app that appears as a camera.
-- [ ] **M7b: phone/iPad camera streamed to the laptop, or the game running on the phone.** Needs HTTPS (e.g. GitHub Pages) and relative asset paths; only worth it if the off-the-shelf apps prove too laggy.
+- [x] **M7b: the game running on a phone or tablet.** GitHub Pages hosting (HTTPS), relative paths, offline
+      copy and install-as-app, touch buttons, wake lock, full-screen note, lighter defaults, tracking in a worker.
+      Streaming a phone's camera to a laptop's browser is not planned (it would need a signalling server).
 - [ ] **M8: camera setup and "Paint your playground".** See [PLAYGROUND-PLAN.md](PLAYGROUND-PLAN.md).
 - [ ] **M9: public release.** See [PUBLIC-PLAN.md](PUBLIC-PLAN.md).
 
@@ -137,6 +155,18 @@ First playtest finding: an adult's poses registered fine but a young child's did
 * The camera picture is shown at full brightness and the skeleton is a thin line (K: bold/off) so kids can see themselves.
 * Next ideas if it's still not good enough: silhouette-only gameplay (M5b), a heavier model with a GPU/accelerator, or calibrating per-kid arm length in the lobby.
 
+## Who is who (October 2026)
+
+Playtest: the dog was sometimes detected as a player, and a parent walking past was added to the game for a few
+seconds. `src/people.js` (pure, unit-tested) now sits between the pose model and the game:
+
+* **Probation:** a new body must be tracked for ~0.45 s and 3 tracked frames, and look upright (head above the
+  shoulders, hips below them, measured in shoulder widths), before it becomes a player.
+* **Watching mid-game:** someone who appears during a game only watches until they hold their arms out for 2 s.
+* **Coming back:** a lost player is remembered for 20 s and recognised by where they went or by their look
+  (mean colour of top and legs, `src/look.js`); a clearly different look is a different person.
+* **Slow devices:** probation and dropout windows stretch to cover 2.5 tracked frames.
+
 ## Known limits
 
 * Skeleton tracking gets confused when kids overlap or crouch close together, and with very small
@@ -144,7 +174,9 @@ First playtest finding: an adult's poses registered fine but a young child's did
 * Left/right is mirrored like a mirror. Poses are symmetrical on purpose to avoid confusion.
 * Sound starts only after the first key press or click, a browser rule. A grown-up pressing SPACE
   to start handles that, but the arms-out auto-start alone starts the game silent.
-* Kids who sit out the lobby stay excluded until the grown-up presses Esc (back to the menu). A kid who
-  walks into view *after* the game started is included automatically.
+* Kids who sit out the lobby watch until they hold their arms out for 2 s, or the grown-up presses Esc. Anyone
+  who walks into view *after* the game started also watches until they do that.
+* Recognising a returning kid by clothing colours fails when siblings wear the same colours or the lighting
+  changes a lot; they then come back as watchers and rejoin with arms out.
 * Port 8137 is used because another program here already uses 8000.
   Change it with the `PORT` environment variable.

@@ -27,7 +27,7 @@ Two routes, and a family should be able to start with whichever they already hav
 | Field of view | Often wide if the ultra-wide lens can be used | Best choice if it is 90 degrees or more |
 | Picture and delay | Varies by phone and app; Wi-Fi adds delay, USB less | Good picture, lowest delay (USB) |
 | Setup | A phone-as-webcam app on phone and laptop | Plug it in |
-| Status | Works today through a phone-as-webcam app | Works today |
+| Status | Works today: open the hosted game on the phone or tablet, or use a phone-as-webcam app | Works today |
 
 What we have learned so far:
 
@@ -38,8 +38,9 @@ What we have learned so far:
 - **Field of view matters more than the camera.** At 2.5 m a typical 70-80 degree webcam sees roughly 3.5 m
   wide and 2 m tall, which is enough for two or three kids but not for a wide group. The game asks for a
   16:9 picture, though some webcams give no wider view for that.
-- **Phone-only play** (the game running on the phone, cast to the TV) is not built; the technical side is
-  tracked as M7b in [PLAN.md](PLAN.md). The phone-as-webcam route does not need it.
+- **Phone or tablet play** (the game running on the device, connected or mirrored to the TV) works from
+  https://calum.github.io/kids-camera-games/: touch buttons (Start, Next level, Menu, Camera, Full screen),
+  a full-screen note, wake lock and lighter tracking. A tablet on a USB-C to HDMI cable is the simplest setup.
 
 ### Setup guide (draft, to become a one-page guide)
 
@@ -101,8 +102,8 @@ Steps marked *(planned)* do not exist yet; see [PLAYGROUND-PLAN.md](PLAYGROUND-P
 
 ## 7. Distribution and polish
 
-- Host on GitHub Pages (this needs relative file paths). Make it installable as a web app so it works offline
-  after the first visit. A phone camera on a hosted page needs HTTPS, which Pages provides.
+- Hosted on GitHub Pages from `main` (`.github/workflows/pages.yml`), with relative paths, a service worker
+  for offline play after the first visit, and a manifest so it installs as a full-screen app.
 - Landing page with the setup guide above, and a short video of the setup.
 - Test with real families before a wider release.
 
@@ -111,4 +112,4 @@ Steps marked *(planned)* do not exist yet; see [PLAYGROUND-PLAN.md](PLAYGROUND-P
 - Which phone route first: the phone-as-webcam apps we have now, or the game running on the phone itself?
 - Which minimum webcam specification do we recommend, and do we name specific models?
 - Should the game ask for a child's age or height to tune the play area?
-- Do we need a server for anything, or can everything stay static on GitHub Pages?
+- ~~Do we need a server for anything?~~ No: everything runs on the device and the site is static.

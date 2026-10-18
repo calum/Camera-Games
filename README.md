@@ -20,7 +20,23 @@ After the fourth level there is a winners screen and the next round starts a lit
 
 ## Quick start
 
-You need [Node.js](https://nodejs.org) 18 or newer and a webcam. There is nothing to install to play. (Running the tests needs Node 21 or newer; this was developed on Node 24.)
+**Play online:** open **https://calum.github.io/kids-camera-games/** in Chrome, Edge or Safari, tap **Allow**
+for the camera, then press **F** or tap **⛶ Full screen**. Nothing is uploaded: the tracking runs on your
+device, and after the first visit the game also works offline.
+
+Two ways to set it up:
+
+| | Simplest | Best experience |
+|---|---|---|
+| **What** | A tablet or phone runs the game | A laptop with a webcam runs the game |
+| **TV** | USB-C to HDMI cable, or screen mirroring (AirPlay, Chromecast) | HDMI cable |
+| **Camera** | The tablet's own front camera, propped under the TV facing the kids | A wide-angle USB webcam on top of the TV |
+| **Controls** | Tap the screen for buttons | Keyboard (or tap / move the mouse for buttons) |
+
+A wired connection to the TV has the least delay; mirroring adds a little. Phones and tablets start on a
+lighter tracking setting; laptops start on the most accurate one and step down by themselves if they're slow.
+
+**Run it yourself** (offline, or for development): you need [Node.js](https://nodejs.org) 18 or newer. (Running the tests needs Node 21 or newer; this was developed on Node 24.)
 
 ```
 start.bat              # Windows: starts the server and opens the browser
@@ -38,7 +54,13 @@ whole body in view, room lit from the front (not backlit by a window).
 Every kid who wants to play holds their arms straight out like an airplane. When the group of airplane
 kids has not changed for 3 seconds the game starts with exactly those kids. Anyone standing there without
 their arms out sits that game out: they still appear on screen, but can't score or get hit. If someone joins
-or drops out, the 3 seconds start again. A grown-up can press **Space** to start with everyone.
+or drops out, the 3 seconds start again. A grown-up can press **Space** (or tap **▶ Start**) to start with everyone.
+
+**People and pets walking past don't join in.** A new body has to be seen for about half a second, and look
+like a standing person, before the game counts it, so the dog trotting past isn't picked up. Someone who walks
+in while a game is running (a parent doing chores) only watches. To join mid-game, hold your arms out for 2
+seconds. A kid who steps out of view and comes back is recognised by where they went and by the colours they
+are wearing, and carries on with their own colour and score.
 
 ## Controls (for the grown-up)
 
@@ -46,7 +68,7 @@ or drops out, the 3 seconds start again. A grown-up can press **Space** to start
 |---|---|
 | Space / Enter | Start the game with everyone (and skip the winners screen) |
 | F | Fullscreen |
-| 1 - 4 | Jump to a level |
+| 1 - 9 | Jump to a level |
 | N | Next level |
 | Esc | Back to the menu (everyone can join again) |
 | C | Switch to the next camera (a phone webcam app shows up as an extra camera); the choice is remembered |
@@ -55,11 +77,18 @@ or drops out, the 3 seconds start again. A grown-up can press **Space** to start
 | D | Debug info: frame rate, tracking time, model, what pose each kid is doing |
 | M | Switch between camera and mouse mode |
 
+**On a tablet or phone** (or any time), tap the screen: buttons for **▶ Start**, **⏭ Next level**,
+**⏏ Menu**, **📷 Camera** and **⛶ Full screen** appear for a few seconds. When the game isn't full screen, the
+menu shows a small "Full screen works best" note with a button (on iPhone it suggests Add to Home Screen,
+since web pages can't go full screen there). The screen is kept awake while the game is open.
+
 **Mouse mode** needs no camera (and is used automatically if the camera is blocked): move = body and hands,
 click = jump, hold Q / W / E = arms up / airplane / hands on head.
 
 URL options: `?mouse`, `?debug`, `?lite` (turn off glow effects on a slow machine), `?model=lite` or
-`?model=full`, `?view=camera`, `?cam=wide` or `?cam=standard` (picture size, see below).
+`?model=full`, `?quality=high|medium|low|lowest` (pin the tracking quality, see below), `?view=camera`,
+`?cam=wide` or `?cam=standard` (picture size, see below), `?level=<id>` (start straight in one level),
+`?worker=off` (track on the main thread).
 
 ### Camera and field of view
 
@@ -72,11 +101,20 @@ The game asks the camera for a 16:9 picture (1280x720). Many webcams crop the si
 - **A kid's pose won't register or tracking glitches:** press **D** to see what the game thinks each kid is
   doing. Make sure their whole body is in view and the room is well lit. Small children are harder for pose
   models; the game is tuned for them but it is not perfect.
-- **It runs slowly:** press **D** for the frame rate. Try `?lite`, or `?model=lite`. The game already switches
-  to the lighter pose model by itself if the laptop averages slower than 50 ms per frame.
+- **It runs slowly:** press **D** for the frame rate and tracking quality. The game draws smoothly however long
+  tracking takes (tracking runs in a background worker), and steps down by itself when tracking averages over
+  50 ms a frame: first to the lighter model, then a smaller picture, then no silhouettes. Glow effects switch
+  off if drawing drops under about 40 frames a second. Try `?lite` or `?quality=low` to force it.
 - **The cut-out looks wrong:** press **B** for the plain camera picture.
 - **The wrong camera is used:** press **C** to cycle through the cameras. **D** shows which one is active, its size and its real frame rate.
 - **Port already in use:** set another one, e.g. `PORT=9000 node server.mjs`.
+
+## Making your own games
+
+Each level is one file in [`src/levels/`](src/levels/). Copy [`_template.js`](src/levels/_template.js), add
+it to the list in [`src/levels/index.js`](src/levels/index.js) and play it with `?mouse&level=<id>`.
+[docs/ADDING-GAMES.md](docs/ADDING-GAMES.md) explains everything a level can use, how to test it, and the
+design rules from playtesting.
 
 ## Your own art
 
@@ -86,14 +124,17 @@ hearts, hands, and a full-screen background for each level. Missing ones fall ba
 ## How it works
 
 1. The camera frame goes to MediaPipe's **pose landmarker** (running in the browser through WebAssembly /
-   WebGL), which returns a skeleton and a body silhouette for up to 4 people.
-2. [`src/tracker.js`](src/tracker.js) steadies the skeleton with a One Euro filter and turns it into simple
+   WebGL, in a background worker so drawing never waits for it), which returns a skeleton and a body
+   silhouette for up to 4 people.
+2. [`src/people.js`](src/people.js) decides who is who: new bodies wait on probation, kids keep their colour,
+   and a kid who comes back is recognised by position and clothing colours.
+3. [`src/tracker.js`](src/tracker.js) steadies the skeleton with a One Euro filter and turns it into simple
    signals the game uses: hands, body circles, jumping, and three poses. Poses are measured in shoulder
    widths so small and tall kids behave the same, and they use hysteresis so one glitchy frame can't flip them.
-3. [`src/person-mask.js`](src/person-mask.js) decides which pixels are a person. It blends the pose silhouette
+4. [`src/person-mask.js`](src/person-mask.js) decides which pixels are a person. It blends the pose silhouette
    with a motion check against the empty room (believed only near where a kid just was) and fades gently, so
    a kid doesn't pop out of existence when pose tracking glitches.
-4. [`src/cutout.js`](src/cutout.js) cuts the kids out of the camera picture and
+5. [`src/cutout.js`](src/cutout.js) cuts the kids out of the camera picture and
    [`src/backdrops.js`](src/backdrops.js) draws the cartoon world behind them. Levels draw on top.
 
 Levels only ever read a small "player" object, so the tracking can be swapped (a different model, a Raspberry
@@ -102,9 +143,14 @@ and the roadmap, and [`CLAUDE.md`](CLAUDE.md) for notes aimed at AI coding assis
 
 ```
 index.html, server.mjs, start.bat       the page, a tiny dependency-free static server, a Windows launcher
+sw.js, manifest.webmanifest, icons/     offline copy and "install as an app" for the hosted site
 src/main.js                             game loop, screens, HUD, keys
-src/levels.js                           the four levels (start / update / draw each)
-src/tracker.js  filter.js  lobby.js     camera + pose -> players, smoothing, the join-by-arms-out lobby
+src/controls.js  device.js              on-screen buttons, full-screen note, wake lock; phone/laptop defaults
+src/levels/                             one file per level, index.js (the list), kit.js (helpers), _template.js
+src/types.js                            JSDoc types: Player, Game, Level (checked by npm run typecheck)
+src/tracker.js  pose-worker.js          camera + pose model (in a worker) -> players, quality ladder
+src/people.js  look.js                  who is who: probation, matching, recognising kids who come back
+src/filter.js  lobby.js                 smoothing, the join-by-arms-out lobby and joining mid-game
 src/camera.js                           picture size, switching cameras, remembering the choice, frame-rate fallback
 src/person-mask.js  cutout.js           which pixels are a kid, and cutting them out
 src/backdrops.js  art.js  draw.js       cartoon worlds, art loading, drawing helpers
@@ -116,11 +162,15 @@ test/unit  test/e2e  test/fixtures      tests
 ## Tests
 
 ```
-npm install          # one time; only installs the test tool (puppeteer-core)
-npm test             # 135 unit tests, a couple of seconds
-npm run test:e2e     # 22 browser tests, about 7 minutes: real Edge/Chrome and the real pose model
-npm run test:all
+npm install          # one time; only installs the test tools (puppeteer-core, typescript)
+npm run typecheck    # checks the JSDoc types, a few seconds
+npm test             # 169 unit tests, a couple of seconds
+npm run test:e2e     # 28 browser tests, about 10 minutes: real Edge/Chrome and the real pose model
+npm run test:all     # all three
 ```
+
+Every push to `main` runs the type check and unit tests on GitHub and publishes the game to GitHub Pages
+(`.github/workflows/pages.yml`).
 
 The browser tests use a fake webcam that plays a photo of a person, so they exercise the whole pipeline
 (camera, pose model, cut-out, scoring, screens) with nobody in front of the camera. They need Edge or Chrome
