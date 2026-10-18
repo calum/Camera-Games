@@ -925,6 +925,52 @@ test('SMOOTH DRAWING: the pose model runs in a worker, so the game keeps drawing
   }
 });
 
+test('SELF-HEALING: an unplugged camera shows a reconnecting screen, the game waits, and the camera comes back by itself', { skip }, async () => {
+  const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
+  try {
+    const { page, problems } = await openGame(browser, url + '?model=full');
+    await waitForState(page, 'menu', 60000);
+    await waitForPerson(page);
+    await playLevel(page, 'bubbles');
+    // "unplug" it: the track ends, exactly as when a USB camera is pulled out
+    await page.evaluate(() => window.__game.tracker.video.srcObject.getVideoTracks()[0].stop());
+    await page.waitForFunction(() => window.__game.tracker.reconnecting === 'camera', { timeout: 10000 });
+    const paused = await page.evaluate(async () => {
+      const s0 = window.__game.state;
+      await new Promise((r) => setTimeout(r, 300));
+      return { s0, s1: window.__game.state };
+    });
+    assert.equal(paused.s1, paused.s0, 'the game waits while reconnecting');
+    // back: a live camera again, and tracking answering on it (counted in tracked frames, not seconds)
+    await page.waitForFunction(() => window.__game.tracker.reconnecting === null, { timeout: 120000, polling: 100 });
+    const seq = await page.evaluate(() => window.__game.tracker.frameSeq);
+    await page.waitForFunction((s) => window.__game.tracker.frameSeq > s + 2, { timeout: 120000 }, seq);
+    assert.equal(await page.evaluate(() => window.__game.tracker.video.srcObject.getVideoTracks()[0].readyState), 'live');
+    assert.equal(await page.evaluate(() => window.__game.g.level?.id), 'bubbles', 'and carries on with the same level');
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('SELF-HEALING: a pose worker that dies silently is restarted, and tracking carries on', { skip }, async () => {
+  const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
+  try {
+    const { page, problems } = await openGame(browser, url + '?model=full');
+    await waitForState(page, 'menu', 60000);
+    await waitForPerson(page);
+    // kill the worker without telling anyone: the frame it was given is never answered
+    await page.evaluate(() => window.__game.tracker.engine.worker.terminate());
+    await page.waitForFunction(() => window.__game.tracker.reconnecting === 'tracker', { timeout: 300000, polling: 200 });
+    await page.waitForFunction(() => window.__game.tracker.reconnecting === null, { timeout: 300000, polling: 200 });
+    await waitForPerson(page, { frames: (await page.evaluate(() => window.__game.tracker.frameSeq)) + 20 });
+    assert.equal(await page.evaluate(() => window.__game.tracker.useWorker), true, 'a first hang gets a fresh worker');
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
 // The on-screen debug panel was hidden behind the game's own text, so ?debug also prints a line a grown-up can
 // copy from the console (F12 > Console) when reporting lag.
 test('DEBUG: ?debug prints a copyable summary of tracking to the console', { skip }, async () => {
