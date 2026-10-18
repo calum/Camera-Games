@@ -123,9 +123,10 @@ details and [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md) how the pairi
 | M | Switch between camera and mouse mode |
 | O | Open or close a family room (play with another home) |
 | V | Mute or unmute your microphone during family play |
+| U | Music off or on (sound effects stay on); the choice is remembered |
 
 **On a tablet or phone** (or any time), tap the screen: buttons for **▶ Start**, **⏭ Next level**,
-**⏏ Menu**, **📷 Camera**, **👪 Family** (in the menu) and **⛶ Full screen** appear for a few seconds. In the level picker a grown-up can also tap a side card to scroll to it, and the middle card to play it. When the game isn't full screen, the
+**⏏ Menu**, **📷 Camera**, **👪 Family** (in the menu), **🎵 Music** and **⛶ Full screen** appear for a few seconds. In the level picker a grown-up can also tap a side card to scroll to it, and the middle card to play it. When the game isn't full screen, the
 menu shows a small "Full screen works best" note with a button (on iPhone it suggests Add to Home Screen,
 since web pages can't go full screen there). The screen is kept awake while the game is open.
 
@@ -234,7 +235,7 @@ src/camera.js                           picture size, switching cameras, remembe
 src/person-mask.js  cutout.js           which pixels are a kid, and cutting them out
 src/backdrops.js  backdrops-extra.js    cartoon worlds (the first levels; the newer levels)
 src/scene-kit.js  art.js  draw.js       scene drawing helpers, art loading, drawing helpers
-src/audio.js  ease.js                   synthesized sound effects (no audio files); auto-ease
+src/audio.js  music.js  ease.js         synthesized sound effects and music (no audio files); auto-ease
 src/family.js  online.js  room-code.js  family play: WebRTC glue, its pure maths, room codes
 src/online-config.js                    the pairing service's address (filled in by the Pages publish)
 cloudflare/                             the pairing service (Worker + Durable Object), deployed separately

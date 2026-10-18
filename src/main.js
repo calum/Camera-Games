@@ -1,7 +1,8 @@
 /** @import { Game, Player } from './types.js' */
 import { PoseTracker, MouseTracker } from './tracker.js';
 import { LEVELS } from './levels/index.js';
-import { sfx, unlock } from './audio.js';
+import { sfx, unlock, music } from './audio.js';
+import { moodFor, musicOn, saveMusicOn } from './music.js';
 import { Ease } from './ease.js';
 import { loadArt, drawArt, registerArt } from './art.js';
 import { text, drawSkeleton, drawHeart, popScale } from './draw.js';
@@ -318,6 +319,8 @@ async function switchCamera() {
 window.addEventListener('resize', resize);
 
 // What the grown-up can do. Keys and the on-screen buttons (controls.js) both call these.
+let musicEnabled = musicOn(params, globalThis.localStorage); // U turns it off and on, remembered
+
 const actions = {
   start() {
     if (state === 'setup') toMenu(); // skip the setup check
@@ -340,6 +343,11 @@ const actions = {
   },
   camera() {
     if (pose && tracker === pose) switchCamera();
+  },
+  music() {
+    musicEnabled = !musicEnabled;
+    saveMusicOn(globalThis.localStorage, musicEnabled);
+    toast(musicEnabled ? 'Music on' : 'Music off (sound effects stay on)', 3);
   },
   family() {
     family.toggle();
@@ -372,6 +380,7 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'c') actions.camera();
   else if (k === 'o' && state !== 'loading') actions.family();
   else if (k === 'v') family.toggleMute();
+  else if (k === 'u') actions.music();
   else if (k === 'b') g.view = g.view === 'cutout' ? 'camera' : 'cutout';
   else if (k === 'k') g.skeleton = { thin: 'bold', bold: 'off', off: 'thin' }[g.skeleton];
   else if (k === 'r' && g.debug) actions.save();
@@ -1074,6 +1083,19 @@ function drawReplay() {
   text(ctx, what, 30 * u, g.H - 70 * u, 30 * u, { align: 'left', color: '#ffe14d' });
 }
 
+// The music follows the screen (music.js moodFor). On a family call it goes quieter, and further down while
+// anyone talks: the host hears the guests' voices over it, and its own microphone ducks the copy the guests hear.
+// A guest hears the host's music in the host's sounds, so it plays none of its own.
+function playMusic() {
+  const mood = musicEnabled && !family.guestView ? moodFor(state, g.level?.id) : null;
+  const host = family.role === 'host';
+  music.update(mood, {
+    family: family.state === 'connected',
+    incoming: host ? family.audios.map((a) => /** @type {MediaStream} */ (a.srcObject)) : [],
+    outgoing: host ? family.mic : null,
+  });
+}
+
 // ------------------------------------------------------------------ main loop
 let last = 0;
 let dtSmooth = 0.016;
@@ -1088,6 +1110,7 @@ function frame(ts) {
   watchFrameRate(dt);
   watchDebug(now);
   if (g.debug) recordSample(now);
+  playMusic();
   render();
 }
 
@@ -1095,4 +1118,4 @@ requestAnimationFrame(frame);
 boot();
 
 // handy for debugging / automated tests
-/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get carousel() { return carousel; }, get setup() { return setup; }, get calibration() { return calibration; }, pickCards, family, get recorder() { return rec; }, get replay() { return replay; }, loadRecording };
+/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get carousel() { return carousel; }, get setup() { return setup; }, get calibration() { return calibration; }, pickCards, family, get recorder() { return rec; }, get replay() { return replay; }, loadRecording, music };

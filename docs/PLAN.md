@@ -130,7 +130,7 @@ code changes. See `assets/README.md`. New art types are one line in `src/art.js`
       Dance party (holding still poses) is the least liked. The dog was sometimes detected as a player and a
       parent walking past joined for a few seconds: fixed by probation, mid-game watching and recognising
       returning kids (`src/people.js`).
-- [ ] **M3: our art and sound.** Replace the placeholder graphics, add music and voice cheers.
+- [ ] **M3: our art and sound.** Replace the placeholder graphics, add voice cheers. (Music: done, generated per level in `music.js`.)
 - [ ] **M4: more levels.** Adding one is a single file: see [ADDING-GAMES.md](ADDING-GAMES.md). Seven added so
       far (11 in all): Dig down, Duck and jump, Catch the stars, Avalanche, Keep it up, Freeze, Hole in the wall.
       They need a playtest. Still ideas (the kids like whole-body action far more than holding poses): meteor

@@ -53,7 +53,8 @@ src/backdrops.js   animated cartoon scene per level (static layer cached, dynami
 src/backdrops-extra.js scenes for the newer levels (EXTRA_SCENES); scene-kit.js = shared scene drawing helpers
 src/art.js         loads optional PNG overrides from assets/ (falls back to emoji / procedural drawing)
 src/draw.js        text, skeleton, hearts, pose icon helpers
-src/audio.js       synthesized sound effects (tones + filtered noise, no files), a few per level
+src/audio.js       synthesized sound effects (tones + filtered noise, no files), a few per level, and the music player
+src/music.js       pure: the background music (a generated song per level), when it plays, ducking under family voices
 src/ease.js        pure: auto-ease. Misses (g.miss()) and dry spells lower g.diff; a good spell restores it
 src/setup-check.js pure: first-launch setup check (camera, light, distance, speed) with plain-word fixes
 src/calibrate.js   pure: the play space. Kids walk left then right as far as they can before the first pick; g.area
