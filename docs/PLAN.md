@@ -3,6 +3,16 @@
 A "Nex Playground"-style game for our own kids: a webcam on the TV tracks their bodies,
 and they play short levels (pop, dodge, jump, dance) using **our own art**.
 
+## Related plans
+
+Each plan has one job; follow the link rather than looking for the detail here.
+
+- **This document:** the game's technical plan, architecture, design decisions and roadmap.
+- [PLAYGROUND-PLAN.md](PLAYGROUND-PLAN.md): camera-confirm step and "Paint your playground" (calibrating and
+  cropping to the play area).
+- [PUBLIC-PLAN.md](PUBLIC-PLAN.md): release plan: phone or webcam setup guides, toddlers, accessibility, safety,
+  distribution.
+
 ## Goals
 
 1. Works on what we already own: a laptop plus a basic webcam on the TV. Phones, iPads
@@ -95,6 +105,8 @@ code changes. See `assets/README.md`. New art types are one line in `src/art.js`
 - [ ] **M6: Raspberry Pi kiosk.** Chromium in kiosk mode on boot, or a native Rust port if the browser is too slow.
 - [x] **M7a: phone as a webcam.** Camera picker (C), remembered choice, 16:9 full-field-of-view request, slow-camera fallback, portrait warning. Works with any phone-as-webcam app that appears as a camera.
 - [ ] **M7b: phone/iPad camera streamed to the laptop, or the game running on the phone.** Needs HTTPS (e.g. GitHub Pages) and relative asset paths; only worth it if the off-the-shelf apps prove too laggy.
+- [ ] **M8: camera setup and "Paint your playground".** See [PLAYGROUND-PLAN.md](PLAYGROUND-PLAN.md).
+- [ ] **M9: public release.** See [PUBLIC-PLAN.md](PUBLIC-PLAN.md).
 
 ## Cut-out and cartoon worlds
 

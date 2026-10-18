@@ -1,13 +1,14 @@
 # Plan: camera setup and "Paint your playground"
 
-Status: **planned, nothing built yet.** This builds on the camera picker (key **C**) and `src/camera.js`
-from the camera work, and on the cut-out (`src/person-mask.js`, `src/cutout.js`). It is the concrete version of
-the "auto-calibrate the play area" idea in [PUBLIC-PLAN.md](PUBLIC-PLAN.md) (there it is a wave-to-start; here
-the kids paint the area they want to play in). See [PLAN.md](PLAN.md) for the game's technical plan.
+Status: **planned, nothing built yet.** This is the single plan for calibrating the play area; the product
+plan in [PUBLIC-PLAN.md](PUBLIC-PLAN.md) links here instead of repeating it. It builds on the camera picker (key
+**C**, `src/camera.js`) and the cut-out (`src/person-mask.js`, `src/cutout.js`), which are already built. See
+[PLAN.md](PLAN.md) for the game's technical plan.
 
 ## Why
 
-- A phone camera was not good enough, so we are working with a normal webcam for now.
+- Our first try with a phone camera (a Pixel 6a rear camera through a webcam app) could not get the wide lens, so
+  we build and test with a normal webcam first. The same setup works for a phone used as a webcam.
 - The camera sees more than the kids want to play in (sofa, doorway, TV stand), and the game currently treats
   the whole picture as the playing field, so things can appear where nobody can or should reach.
 - Letting the kids colour in the region they want to play in tells the game where interactive things may
