@@ -925,15 +925,23 @@ test('SMOOTH DRAWING: the pose model runs in a worker, so the game keeps drawing
   }
 });
 
-test('SETUP CHECK: a first launch checks camera, light, distance and speed in plain words; SPACE skips it; it is not remembered until it passes', { skip }, async () => {
+test('SETUP CHECK: a first launch checks camera, light, distance, speed and graphics acceleration in plain words; SPACE skips it; it is not remembered until it passes', { skip }, async () => {
   const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
   try {
     const { page, problems } = await openGame(browser, url + '?model=full', { setup: true });
     await waitForState(page, 'setup', 60000);
     // wait for every check to have an answer (speed needs a few tracked frames)
-    await page.waitForFunction(() => window.__game.setup.items.length === 4 && window.__game.setup.items.every((c) => c.ok !== null), { timeout: 300000, polling: 200 });
+    await page.waitForFunction(() => window.__game.setup.items.length === 5 && window.__game.setup.items.every((c) => c.ok !== null), { timeout: 300000, polling: 200 });
     const items = await page.evaluate(() => Object.fromEntries(window.__game.setup.items.map((c) => [c.name, c])));
-    assert.deepEqual(Object.keys(items), ['camera', 'light', 'distance', 'speed']);
+    assert.deepEqual(Object.keys(items), ['camera', 'light', 'distance', 'speed', 'graphics']);
+    // headless test browsers usually draw in software (SwiftShader): the graphics row must agree with the renderer
+    const soft = await page.evaluate(() => {
+      const gl = document.createElement('canvas').getContext('webgl');
+      const ext = gl?.getExtension('WEBGL_debug_renderer_info');
+      const r = (ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl?.getParameter(gl.RENDERER)) || 'no WebGL';
+      return /swiftshader|llvmpipe|softpipe|software|basic render|no webgl/i.test(r) || window.__game.tracker.delegate === 'CPU';
+    });
+    assert.equal(items.graphics.ok, !soft, items.graphics.text);
     assert.equal(items.camera.ok, true, items.camera.text);
     assert.equal(items.light.ok, true, `the photo is evenly lit: ${items.light.text}`);
     for (const c of Object.values(items)) assert.ok(c.text.length > 5, `each check says something: ${c.name}`);

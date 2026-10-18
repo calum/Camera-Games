@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { SetupCheck, SETUP_KEY, setupDone, saveSetupDone, shouldRunSetup, frameBrightness, judgeLight, judgeDistance, judgeSpeed, judgeCamera } from '../../src/setup-check.js';
+import { judgeGraphics, softwareRendering, accelerationHelp, SetupCheck, SETUP_KEY, setupDone, saveSetupDone, shouldRunSetup, frameBrightness, judgeLight, judgeDistance, judgeSpeed, judgeCamera } from '../../src/setup-check.js';
 
 const W = 1920;
 const H = 1080;
@@ -106,4 +106,18 @@ test('a problem keeps it from passing; after 10 s it is overdue but still passes
   assert.equal(f.passed, false, 'only 0.7 s fine since the flicker');
   run(f, 0.5, good);
   assert.equal(f.passed, true);
+});
+
+test('graphics: a software renderer (acceleration off) or a pose model on the CPU is flagged, with where to turn it on', () => {
+  assert.equal(judgeGraphics('ANGLE (Intel, Intel(R) UHD Graphics 620 Direct3D11 vs_5_0 ps_5_0, D3D11)', 'GPU').ok, true);
+  assert.equal(judgeGraphics('ANGLE (Google, Vulkan 1.3.0 (SwiftShader Device (Subzero) (0x0000C0DE)), SwiftShader driver)', 'GPU').ok, false);
+  assert.equal(judgeGraphics('ANGLE (Microsoft, Microsoft Basic Render Driver Direct3D11 vs_5_0 ps_5_0, D3D11)', 'GPU').ok, false);
+  assert.equal(judgeGraphics('llvmpipe (LLVM 15.0.7, 256 bits)', 'GPU').ok, false);
+  assert.equal(judgeGraphics('no WebGL', 'GPU').ok, false);
+  assert.equal(softwareRendering('ANGLE (NVIDIA GeForce RTX 3060)', 'CPU'), true, 'the model fell back to the processor');
+  const edge = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36 Edg/140.0.0.0';
+  const chrome = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
+  assert.match(accelerationHelp(edge), /Edge: Settings > System and performance > .*Use graphics acceleration when available/);
+  assert.match(accelerationHelp(chrome), /Chrome: Settings > System > /);
+  assert.match(accelerationHelp('Mozilla/5.0 Firefox/130.0'), /hardware\) acceleration/);
 });

@@ -80,6 +80,29 @@ export function judgeSpeed(detectMs, cameraFps, tracked) {
   return { ok: true, text: 'Fast enough' };
 }
 
+// Graphics acceleration. With it off (a browser setting, or a blocked graphics driver) the browser draws with a
+// software renderer and the pose model runs on the processor: many times slower, and the game lags however fast the
+// laptop is. The WebGL renderer's name gives it away (SwiftShader is Chrome and Edge's software renderer), and so
+// does the pose model having fallen back to the CPU.
+const SOFTWARE = /swiftshader|llvmpipe|softpipe|software|basic render|no webgl/i;
+/**
+ * @param {string} renderer  the WebGL renderer's name ('' if unknown)
+ * @param {string} delegate  where the pose model runs: 'GPU' or 'CPU'
+ */
+export function softwareRendering(renderer, delegate) {
+  return SOFTWARE.test(renderer) || delegate === 'CPU';
+}
+export function judgeGraphics(renderer, delegate) {
+  return softwareRendering(renderer, delegate) ? { ok: false, text: 'Graphics acceleration is off: see below' } : { ok: true, text: 'Graphics acceleration is on' };
+}
+// Where to turn it back on, in the grown-up's own browser.
+/** @param {string} userAgent */
+export function accelerationHelp(userAgent) {
+  if (/Edg\//.test(userAgent)) return 'Edge: Settings > System and performance > turn on "Use graphics acceleration when available", then restart Edge.';
+  if (/Chrome\//.test(userAgent)) return 'Chrome: Settings > System > turn on "Use graphics acceleration when available", then relaunch Chrome.';
+  return 'Turn on graphics (hardware) acceleration in the browser settings, then restart the browser.';
+}
+
 /** @param {boolean} picture  frames are arriving from the camera */
 export function judgeCamera(picture, label = '') {
   return picture ? { ok: true, text: label ? `Camera: ${label}` : 'Camera works' } : { ok: false, text: 'No picture: check the camera is plugged in and not used by another app' };
