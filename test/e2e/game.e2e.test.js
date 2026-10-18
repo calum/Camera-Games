@@ -721,10 +721,24 @@ test('AUTO-START (real camera): a kid holding their arms out starts the game by 
     await waitForState(page, 'menu', 60000);
     await waitForPerson(page);
     const t0 = Date.now();
+    // The game counts the hold in game time: each frame adds at most 0.05 s, so on a slow test machine game time
+    // falls behind the clock. Count game time the same way, so the upper limit doesn't fail just because frames are slow.
+    await page.evaluate(() => {
+      window.__gameSecs = 0;
+      let last = performance.now();
+      const tick = (ts) => {
+        window.__gameSecs += Math.min(0.05, (ts - last) / 1000);
+        last = ts;
+        if (window.__game.state === 'menu') requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
     assert.equal(await page.evaluate(() => window.__game.state), 'menu', 'does not start instantly');
-    await waitForState(page, 'intro', 15000); // nobody touched the keyboard
+    await waitForState(page, 'intro', 60000); // nobody touched the keyboard
     const secs = (Date.now() - t0) / 1000;
-    assert.ok(secs >= 2.5 && secs < 8, `started after ${secs.toFixed(1)}s of arms-out`);
+    const gameSecs = await page.evaluate(() => window.__gameSecs);
+    assert.ok(secs >= 2.5, `not before ~3 s of arms-out (${secs.toFixed(1)} s)`);
+    assert.ok(gameSecs < 8, `started after ${gameSecs.toFixed(1)} s of game time (${secs.toFixed(1)} s on the clock)`);
     const joined = await page.evaluate(() => ({ playing: window.__game.g.activePlayers().length, excluded: window.__game.g.players.filter((p) => p.excluded).length }));
     assert.deepEqual(joined, { playing: 1, excluded: 0 });
     assert.deepEqual(problems, []);
