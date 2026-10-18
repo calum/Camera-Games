@@ -50,6 +50,19 @@ jobs:
           mkdir _site
           cp -r index.html manifest.webmanifest sw.js icons src vendor models assets _site/
           touch _site/.nojekyll
+      # Family play: point the published game at the pairing function (repository variable PAIRING_URL,
+      # docs/DEPLOY-CLOUDFLARE.md). Unset means two windows on one computer only.
+      - name: Set the pairing address
+        env:
+          PAIRING_URL: ${{ vars.PAIRING_URL }}
+        run: |
+          node <<'JS'
+          const url = (process.env.PAIRING_URL || '').trim().replace(/\/$/, '');
+          if (url) {
+            if (!/^https:\/\/[^\s'"]+$/.test(url)) throw new Error('PAIRING_URL must be an https address, got: ' + url);
+            require('fs').writeFileSync('_site/src/online-config.js', `export const SIGNAL_URL = ${JSON.stringify(url)};\n`);
+          }
+          JS
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

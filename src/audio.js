@@ -13,6 +13,28 @@ function ac() {
   return ctx;
 }
 
+// Every sound goes through one bus, so it can also be copied to family in another home (soundStream).
+let bus = null;
+let tap = null;
+function out(/** @type {AudioContext} */ a) {
+  if (!bus) {
+    bus = a.createGain();
+    bus.connect(a.destination);
+  }
+  return bus;
+}
+
+/** The game's sounds as a MediaStream (family play sends it to the guest). Null when there is no audio. */
+export function soundStream() {
+  const a = ac();
+  if (!a) return null;
+  if (!tap) {
+    tap = a.createMediaStreamDestination();
+    out(a).connect(tap);
+  }
+  return tap.stream;
+}
+
 // Call from a user gesture (key/click) so browsers allow sound.
 export function unlock() {
   ac();
@@ -29,7 +51,7 @@ function tone(freq, dur, { type = 'sine', vol = 0.15, to = null, delay = 0 } = {
   if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
   g.gain.setValueAtTime(vol, t);
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  o.connect(g).connect(a.destination);
+  o.connect(g).connect(out(a));
   o.start(t);
   o.stop(t + dur + 0.02);
 }
@@ -59,7 +81,7 @@ function noise(dur, { freq = 1000, to = null, q = 1, filter = 'bandpass', vol = 
   g.gain.setValueAtTime(0.0001, t);
   g.gain.exponentialRampToValueAtTime(vol, t + Math.min(0.02, dur / 4)); // a tiny fade-in, so no click
   g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-  src.connect(f).connect(g).connect(a.destination);
+  src.connect(f).connect(g).connect(out(a));
   src.start(t);
   src.stop(t + dur + 0.02);
 }

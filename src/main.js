@@ -11,6 +11,8 @@ import { Backdrops } from './backdrops.js';
 import { loadSavedCamera } from './camera.js';
 import { defaultSettings } from './device.js';
 import { createControls } from './controls.js';
+import { Family } from './family.js';
+import { SIGNAL_URL } from './online-config.js';
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
 const ctx = canvas.getContext('2d');
@@ -87,6 +89,9 @@ let stateT = 0;
 let levelIdx = 0;
 let levelT = 0;
 const lobby = new Lobby({ hold: 3 });
+// Playing with family in another home (docs/ONLINE.md). Idle unless the grown-up opens a room (key O) or the page
+// was opened with ?room=CODE.
+const family = new Family({ canvas, search: location.search, origin: location.origin + location.pathname, signal: params.get('signal') || SIGNAL_URL });
 let outroMsg = '';
 let status = 'Loading...';
 
@@ -95,8 +100,10 @@ function setState(s) {
   stateT = 0;
 }
 
-// Everyone the tracker knows, including kids who are briefly out of view (so they keep their place).
-const everyone = () => /** @type {Player[]} */ (tracker?.people?.players ?? g.players);
+// Everyone the tracker knows, including kids who are briefly out of view (so they keep their place),
+// and the family guests.
+const localPeople = () => /** @type {Player[]} */ (tracker?.people?.players ?? g.players.filter((p) => !p.remote));
+const everyone = () => [...localPeople(), ...family.crowd.players];
 
 function toMenu() {
   for (const p of everyone()) p.excluded = false;
@@ -250,6 +257,10 @@ const actions = {
   camera() {
     if (pose && tracker === pose) switchCamera();
   },
+  family() {
+    family.toggle();
+    toast(family.active ? `Family room ${family.code}: ${family.role === 'host' ? 'ask them to open ' + family.link : 'looking for the host'}` : 'Family room closed', 6);
+  },
 };
 
 window.addEventListener('keydown', (e) => {
@@ -266,6 +277,8 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'f') actions.fullscreen();
   else if (k === 'd') g.debug = !g.debug;
   else if (k === 'c') actions.camera();
+  else if (k === 'o' && state !== 'loading') actions.family();
+  else if (k === 'v') family.toggleMute();
   else if (k === 'b') g.view = g.view === 'cutout' ? 'camera' : 'cutout';
   else if (k === 'k') g.skeleton = { thin: 'bold', bold: 'off', off: 'thin' }[g.skeleton];
   else if (k === 'm' && state !== 'loading') {
@@ -288,6 +301,7 @@ createControls(actions, {
   state: () => state,
   mouseIsPlaying: () => !!mouse && tracker === mouse,
   hasCamera: () => !!pose && tracker === pose,
+  family: () => family.active,
 });
 
 // Offline play on the hosted site: a service worker keeps a copy of the game. Only over HTTPS (GitHub Pages),
@@ -300,7 +314,12 @@ if (location.protocol === 'https:' && 'serviceWorker' in navigator && !params.ha
 let cutoutKey = '';
 let cutoutT = 0;
 function update(dt) {
-  g.players = tracker ? tracker.update(g.now) : [];
+  const local = tracker ? tracker.update(g.now) : [];
+  g.players = local;
+  if (family.role === 'host') {
+    family.readGuestFrame();
+    g.players = [...local, ...family.remotePlayers(g.now, g.W, g.H, localPeople().map((p) => p.slot))];
+  }
   stateT += dt;
   admitPlayers(dt);
   // Cut the kids out of the camera picture (pose silhouettes + motion safety net). Only worth redoing when
@@ -308,11 +327,17 @@ function update(dt) {
   // in between, the last cut-out is drawn again.
   cutoutT += dt;
   const key = pose ? `${pose.video.currentTime}:${pose.frameSeq}` : '';
+  let cutoutFresh = false;
   if (g.view !== 'cutout' || !pose || tracker !== pose) cutoutReady = false;
   else if (key !== cutoutKey) {
     cutoutKey = key;
-    cutoutReady = cutout.update(pose.video, pose.maskLow, pose.maskW, pose.maskH, cutoutT) || cutoutReady;
+    cutoutFresh = cutout.update(pose.video, pose.maskLow, pose.maskW, pose.maskH, cutoutT);
+    cutoutReady = cutoutFresh || cutoutReady;
     cutoutT = 0;
+  }
+  if (family.role === 'guest') {
+    family.sendFrame(local, cutoutFresh ? cutout : null, cutoutFresh ? pose.videoRect() : null, g.W, g.H, g.now);
+    if (family.guestView) return; // the host runs the game; we only send our kids and show its picture
   }
 
   for (const q of g.particles) {
@@ -420,6 +445,7 @@ function drawBackground() {
   const custom = state !== 'menu' && state !== 'finale' && typeof g.level?.backdrop === 'object' ? g.level.backdrop : undefined;
   backdrops.draw(ctx, backdropId(), g.W, g.H, g.now, custom);
   if (camera && cutoutReady) cutout.draw(ctx, r);
+  family.drawGuest(ctx, g.W, g.H);
 }
 function drawParticles() {
   for (const q of g.particles) {
@@ -463,6 +489,7 @@ function drawPlayerCount() {
 
 function render() {
   const u = g.u;
+  if (family.guestView && family.drawHostPicture(ctx, g.W, g.H)) return; // the host's picture already carries the room label
   drawBackground();
 
   if (state === 'loading') {
@@ -537,6 +564,8 @@ function render() {
     text(ctx, 'Next round is a bit harder...', g.W / 2, g.H * 0.92, 44 * u);
   }
 
+  if (family.active) text(ctx, family.label, 30 * u, g.H - 30 * u, 26 * u, { align: 'left' });
+
   if (g.toast && g.now < g.toast.until) {
     ctx.font = `800 ${36 * u}px "Trebuchet MS", system-ui, sans-serif`;
     const w = ctx.measureText(g.toast.text).width + 60 * u;
@@ -585,4 +614,4 @@ requestAnimationFrame(frame);
 boot();
 
 // handy for debugging / automated tests
-/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; } };
+/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, family };

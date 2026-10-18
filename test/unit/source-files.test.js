@@ -8,7 +8,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const dirs = ['src', 'test', 'docs', 'assets'];
+const dirs = ['src', 'test', 'docs', 'assets', 'cloudflare'];
 const top = ['server.mjs', 'README.md', 'package.json', 'index.html', 'start.bat'];
 
 function files() {

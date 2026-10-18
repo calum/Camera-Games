@@ -1,0 +1,57 @@
+# Deploys the family-play pairing function (cloudflare/) to Cloudflare whenever it changes on main.
+# Needs two repository secrets (Settings > Secrets and variables > Actions): CLOUDFLARE_API_TOKEN and
+# CLOUDFLARE_ACCOUNT_ID. Without them this workflow stops with a note instead of failing. Step by step:
+# docs/DEPLOY-CLOUDFLARE.md. Optional secrets TURN_KEY_ID and TURN_KEY_API_TOKEN switch on the relay.
+name: Deploy pairing function
+
+on:
+  push:
+    branches: [main]
+    paths: ['cloudflare/**', 'src/room-code.js', '.github/workflows/pairing.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pairing-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      TURN_KEY_ID: ${{ secrets.TURN_KEY_ID }}
+      TURN_KEY_API_TOKEN: ${{ secrets.TURN_KEY_API_TOKEN }}
+    steps:
+      - name: Check the secrets are set
+        id: have
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "Add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets to deploy (docs/DEPLOY-CLOUDFLARE.md)." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/checkout@v4
+        if: steps.have.outputs.ok == 'true'
+      - uses: actions/setup-node@v4
+        if: steps.have.outputs.ok == 'true'
+        with:
+          node-version: 22
+      - name: Deploy
+        if: steps.have.outputs.ok == 'true'
+        working-directory: cloudflare
+        run: |
+          npx --yes wrangler@4 deploy 2>&1 | tee deploy.log
+          url=$(grep -o 'https://[^ ]*workers.dev' deploy.log | head -1)
+          echo "Pairing function deployed: ${url:-see the log}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Set the repository variable PAIRING_URL to that address (docs/DEPLOY-CLOUDFLARE.md)." >> "$GITHUB_STEP_SUMMARY"
+      - name: Turn on the TURN relay (only when its secrets are set)
+        if: steps.have.outputs.ok == 'true' && env.TURN_KEY_ID != '' && env.TURN_KEY_API_TOKEN != ''
+        working-directory: cloudflare
+        run: |
+          printf '%s' "$TURN_KEY_ID" | npx --yes wrangler@4 secret put TURN_KEY_ID
+          printf '%s' "$TURN_KEY_API_TOKEN" | npx --yes wrangler@4 secret put TURN_KEY_API_TOKEN
