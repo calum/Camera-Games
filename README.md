@@ -124,8 +124,8 @@ since web pages can't go full screen there). The screen is kept awake while the 
 **Mouse mode** needs no camera (and is used automatically if the camera is blocked): move = body and hands,
 click = jump, hold Q / W / E = arms up / airplane / hands on head, hold S = duck.
 
-URL options: `?mouse`, `?debug` (debug info on screen, plus a summary line in the browser console every 5
-seconds), `?lite` (turn off glow effects on a slow machine) or `?fx` (keep them on), `?model=lite` or
+URL options: `?mouse`, `?debug` (debug info on screen, a summary line in the browser console every 5
+seconds, and recording the last minute, see below), `?replay` (play a debug recording back), `?lite` (turn off glow effects on a slow machine) or `?fx` (keep them on), `?model=lite` or
 `?model=full`, `?quality=high|medium|low|lowest` (pin the tracking quality, see below), `?view=camera`,
 `?cam=wide` or `?cam=standard` (picture size, see below), `?level=<id>` (start straight in one level),
 `?worker=off` (track on the main thread), `?setup` / `?nosetup` (show or skip the setup check),
@@ -154,6 +154,17 @@ The game asks the camera for a 16:9 picture (1280x720). Many webcams crop the si
 - **Reporting a problem:** open the game with `?debug`, press **F12** and open the Console. Every 5 seconds the
   game writes one line starting with `[kids-camera-games debug]` (frame rate, tracking, model, camera, graphics
   card); copy and paste that line.
+- **Recording a bad moment:** in debug mode (`?debug` or **D**) the game keeps the last minute in memory. When
+  something goes wrong, press **R** (or tap **💾 Save last minute**) straight away: a file like
+  `kcg-2026-10-18-181605.json` lands in Downloads with every skeleton the tracker saw, how fast everything ran
+  (frame rate, tracking round trip, quality rung, camera rate) and what happened (screens, scores, misses,
+  warnings). Send that file. It holds no pictures. **G** (or **🎥 Video**) also records the game screen, which
+  does show the kids, so it is only ever on when a grown-up turns it on; **R** then saves the last 30-60 s as
+  `.webm` too. Nothing is uploaded anywhere: saving is an ordinary download.
+- **Replaying a recording:** open the game with `?replay` and drop the `.json` on the page (or press **L**). The
+  game goes back to the level the clip started in and the recorded skeletons are played through the real tracking
+  and game code, without a camera. Dropping a recording on the page also works in debug mode. A recording in
+  `test/fixtures/recordings/` becomes a regression test (see the README there).
 - **The cut-out looks wrong:** press **B** for the plain camera picture.
 - **The wrong camera is used:** press **C** to cycle through the cameras. **D** shows which one is active, its size and its real frame rate.
 - **Port already in use:** set another one, e.g. `PORT=9000 node server.mjs`.
@@ -197,6 +208,8 @@ and the roadmap, and [`CLAUDE.md`](CLAUDE.md) for notes aimed at AI coding assis
 index.html, server.mjs, start.bat       the page, a tiny dependency-free static server, a Windows launcher
 sw.js, manifest.webmanifest, icons/     offline copy and "install as an app" for the hosted site
 src/main.js                             game loop, screens, HUD, keys
+src/recording.js  replay.js             debug recordings (the last minute of play) and playing them back
+src/debug-record.js                     saving a recording as a download, optional screen video
 src/picker.js                           the level picker carousel
 src/setup-check.js                      the first-launch setup check (camera, light, distance, speed, GPU)
 src/controls.js  device.js              on-screen buttons, full-screen note, wake lock; phone/laptop defaults

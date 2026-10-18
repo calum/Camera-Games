@@ -122,7 +122,8 @@ code changes. See `assets/README.md`. New art types are one line in `src/art.js`
 - [x] **M1: playable demo** (this repo): 4 levels, multi-kid, mouse fallback, offline.
 - [x] **M1b: robustness and polish** (October 2026): tracking in a worker with step-down and main-thread fallback,
       the carousel level picker, sound effects, auto-ease, a first-launch setup check (with a GPU check),
-      self-healing (lost camera, hung tracker), `?debug` console summary, performance tests.
+      self-healing (lost camera, hung tracker), `?debug` console summary, performance tests,
+      debug recordings of the last minute (R) with `?replay` and regression tests from real footage.
 - [ ] **M2: playtest with the kids.** Tune hit sizes, jump sensitivity, level length, spawn rates.
       The constants are at the top of each level file in `src/levels/` and in `computeFeatures` in `tracker.js`.
       Findings so far (October 2026): favourites are Dodge the rocks, then Jump the waves, then Pop the bubbles;

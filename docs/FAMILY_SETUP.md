@@ -300,6 +300,12 @@ still slow, add `?lite` to the end of the web address, which turns off the glow 
 Add `?debug` to the end of the web address and press **F12** (on a laptop), then click Console. Every 5 seconds
 the game writes a line starting with `[kids-camera-games debug]`. Copy one and send it.
 
+**Asked to send a recording?**
+With `?debug` on, the game remembers the last minute. Right after something goes wrong, press **R** (or tap the
+screen and press **💾 Save last minute**). A file starting with `kcg-` appears in your Downloads; send it. It has
+the stick-figure skeletons and timings only, no pictures. **G** (or **🎥 Video**) also records the screen, which
+shows the children, so only turn it on if you are happy to share that. Nothing is uploaded by the game itself.
+
 **There is a delay between moving and seeing it on the TV.**
 Put the TV in Game mode. If you are mirroring a phone wirelessly, a cable will be much snappier. Wi-Fi
 webcam apps add delay too; USB is better.
