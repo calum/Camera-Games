@@ -1,0 +1,653 @@
+// End-to-end tests: a real browser, the real server, the real MediaPipe pose model,
+// and a fake webcam that shows a photo of a person. No camera or kids needed.
+//
+//   npm run test:e2e        (needs Edge or Chrome; set BROWSER_PATH if it isn't found)
+import test, { before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { findBrowser, startServer, makeFakeWebcamFile, launch, openGame, waitForState, wait } from './helpers.js';
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const photo = path.join(here, '..', 'fixtures', 'pose.jpg'); // man with arms straight out = "airplane"
+const exe = findBrowser();
+const skip = exe ? false : 'no Edge/Chrome found (set BROWSER_PATH)';
+
+let server, url, webcamFile;
+
+before(async () => {
+  if (skip) return;
+  ({ server, url } = await startServer());
+  const b = await launch(exe);
+  webcamFile = await makeFakeWebcamFile(b, photo);
+  await b.close();
+});
+
+after(() => {
+  server?.close();
+  if (webcamFile) fs.rmSync(webcamFile, { force: true });
+});
+
+test('REAL CAMERA PIPELINE: model loads, camera starts, a person is found and their pose recognised', { skip }, async () => {
+  const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
+  try {
+    const { page, problems } = await openGame(browser, url);
+    await waitForState(page, 'menu', 60000); // wasm + model + camera all loaded
+    const result = await page.evaluate(() => window.__game.g.notice);
+    assert.equal(result, '', 'no "no camera" fallback notice, so the real camera path was used');
+
+    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 20000 });
+    const info = await page.evaluate(() => {
+      const t = window.__game.tracker;
+      const p = t.players[0];
+      return {
+        count: t.players.length,
+        pose: p.pose,
+        jumps: p.jumps,
+        cx: p.cx,
+        W: window.__game.g.W,
+        shoulderW: p.shoulderW,
+        delegate: t.delegate,
+        detectMs: t.detectMs,
+        videoSize: [t.video.videoWidth, t.video.videoHeight],
+      };
+    });
+    assert.deepEqual(info.videoSize, [640, 480]);
+    assert.equal(info.count, 1, 'exactly one person detected');
+    assert.equal(info.pose.airplane, true, 'arms-out photo is recognised as the airplane pose');
+    assert.equal(info.pose.armsUp, false);
+    assert.equal(info.pose.handsHead, false);
+    assert.equal(info.jumps, 0, 'a still photo never produces a jump');
+    assert.ok(Math.abs(info.cx - info.W / 2) < info.W * 0.15, `person is near the screen centre (cx=${info.cx})`);
+    assert.ok(info.shoulderW > 40, 'skeleton has a sensible size');
+    // Only a "is it completely stuck?" check: the test browser uses a software renderer and the
+    // average includes model warm-up. Judge real speed on the real laptop with the D key.
+    assert.ok(info.detectMs < 3000, `tracking is not absurdly slow (${info.detectMs.toFixed(0)}ms)`);
+
+    // The skeleton must be drawn over the camera picture (mirrored, aligned): screen is not blank.
+    const nonBlank = await page.evaluate(() => {
+      const c = document.getElementById('c').getContext('2d').getImageData(0, 0, 1280, 720).data;
+      let lit = 0;
+      for (let i = 0; i < c.length; i += 4 * 97) if (c[i] + c[i + 1] + c[i + 2] > 120) lit++;
+      return lit;
+    });
+    assert.ok(nonBlank > 200, 'camera image is rendered behind the game');
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('REAL CAMERA PLAY-THROUGH: start with the keyboard, hold the airplane pose in the dance level and score', { skip }, async () => {
+  const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
+  try {
+    const { page, problems } = await openGame(browser, url);
+    await waitForState(page, 'menu', 60000);
+    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 20000 });
+
+    await page.keyboard.press('Space'); // grown-up starts the game
+    await waitForState(page, 'intro', 5000);
+    assert.equal(await page.evaluate(() => window.__game.g.level.id), 'bubbles', 'game starts with level 1');
+    await waitForState(page, 'play', 8000); // 3-second intro
+
+    // jump straight to the dance level, wait until the "airplane" round shows up and gets scored
+    await page.keyboard.press('4');
+    await waitForState(page, 'play', 8000);
+    await page.waitForFunction(
+      () => {
+        const g = window.__game.g;
+        return g.team.score >= 3 && g.players[0].score >= 3;
+      },
+      { timeout: 30000 }, // rounds are random; an airplane round comes up within a few rounds
+    );
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('FULL COLOUR (camera view): kids see the camera picture at full brightness, with only a thin skeleton on top; K cycles the look', { skip }, async () => {
+  const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
+  try {
+    const { page, problems } = await openGame(browser, url + '?view=camera');
+    await waitForState(page, 'menu', 60000);
+    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 20000 });
+    await page.keyboard.press('Space');
+    await page.keyboard.press('4'); // dance level: nothing drawn over the left side of the screen
+    await waitForState(page, 'play', 10000);
+    await wait(500);
+
+    const r = await page.evaluate(() => {
+      const t = window.__game.tracker;
+      const rect = t.videoRect();
+      const c = document.getElementById('c');
+      // what the camera picture alone looks like at this size
+      const off = document.createElement('canvas');
+      off.width = c.width;
+      off.height = c.height;
+      const x = off.getContext('2d');
+      x.translate(rect.x + rect.w, rect.y);
+      x.scale(-1, 1);
+      x.drawImage(t.video, 0, 0, rect.w, rect.h);
+      const lum = (ctx, sx, sy, w, h) => {
+        const d = ctx.getImageData(sx, sy, w, h).data;
+        let s = 0;
+        for (let i = 0; i < d.length; i += 4) s += 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+        return s / (d.length / 4);
+      };
+      const region = [Math.round(c.width * 0.03), Math.round(c.height * 0.55), Math.round(c.width * 0.2), Math.round(c.height * 0.25)];
+      return { game: lum(c.getContext('2d'), ...region), camera: lum(x, ...region), skeleton: window.__game.g.skeleton };
+    });
+    assert.ok(r.camera > 60, `test picture is not black (${r.camera.toFixed(0)})`);
+    const ratio = r.game / r.camera;
+    assert.ok(ratio > 0.88 && ratio < 1.1, `game shows the camera at ${(ratio * 100).toFixed(0)}% brightness (was ~65% before)`);
+    assert.equal(r.skeleton, 'thin');
+
+    // K cycles thin -> bold -> off -> thin
+    const seen = [];
+    for (let i = 0; i < 3; i++) {
+      await page.keyboard.press('k');
+      seen.push(await page.evaluate(() => window.__game.g.skeleton));
+    }
+    assert.deepEqual(seen, ['bold', 'off', 'thin']);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+// Average colour of a small square of the game canvas around (fx, fy) given as fractions of the screen.
+const patch = (page, fx, fy, r = 6) =>
+  page.evaluate(
+    (fx, fy, r) => {
+      const c = document.getElementById('c');
+      const d = c.getContext('2d').getImageData(Math.round(c.width * fx) - r, Math.round(c.height * fy) - r, 2 * r, 2 * r).data;
+      const n = d.length / 4;
+      let R = 0, G = 0, B = 0;
+      for (let i = 0; i < d.length; i += 4) { R += d[i]; G += d[i + 1]; B += d[i + 2]; }
+      return { r: R / n, g: G / n, b: B / n };
+    },
+    fx,
+    fy,
+    r,
+  );
+
+// What is behind the kids right now? Compare the game's pixels, over several spots on the left side of
+// the screen (clear of the kid and the HUD), with (a) the cartoon backdrop drawn alone at this very
+// instant and (b) the raw camera picture. Returns the mean colour distance to each. (A fixed colour
+// check is flaky: the disco's spotlight beams sweep across any single patch.)
+const backgroundSource = (page) =>
+  page.evaluate(() => {
+    const { g, backdrops, tracker } = window.__game;
+    const c = document.getElementById('c');
+    const W = c.width;
+    const H = c.height;
+    const off = () => {
+      const o = document.createElement('canvas');
+      o.width = W;
+      o.height = H;
+      return o;
+    };
+    const bd = off();
+    backdrops.draw(bd.getContext('2d'), g.level?.id ?? 'menu', W, H, g.now);
+    const cam = off();
+    const cx = cam.getContext('2d');
+    const r = tracker.videoRect();
+    cx.translate(r.x + r.w, r.y);
+    cx.scale(-1, 1);
+    cx.drawImage(tracker.video, 0, 0, r.w, r.h);
+    const avg = (ctx, fx, fy) => {
+      const d = ctx.getImageData(Math.round(W * fx) - 6, Math.round(H * fy) - 6, 12, 12).data;
+      let R = 0, G = 0, B = 0;
+      for (let i = 0; i < d.length; i += 4) { R += d[i]; G += d[i + 1]; B += d[i + 2]; }
+      const n = d.length / 4;
+      return [R / n, G / n, B / n];
+    };
+    const spots = [[0.04, 0.3], [0.04, 0.6], [0.04, 0.75], [0.1, 0.3], [0.1, 0.6], [0.1, 0.75]];
+    const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1], a[2] - b[2]);
+    let dBackdrop = 0, dCamera = 0;
+    for (const [fx, fy] of spots) {
+      const game = avg(c.getContext('2d'), fx, fy);
+      dBackdrop += dist(game, avg(bd.getContext('2d'), fx, fy));
+      dCamera += dist(game, avg(cx, fx, fy));
+    }
+    return { dBackdrop: dBackdrop / spots.length, dCamera: dCamera / spots.length };
+  });
+
+test('CUT-OUT: only the kid is shown (cut out of the camera picture) in front of a cartoon world', { skip }, async () => {
+  const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
+  try {
+    // ?model=full pins the model so it can't be swapped mid-test on a slow machine
+    const { page, problems } = await openGame(browser, url + '?model=full');
+    await waitForState(page, 'menu', 60000);
+    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 20000 });
+    await page.keyboard.press('Space');
+    await page.keyboard.press('4'); // dance level = dark purple disco
+    await waitForState(page, 'play', 10000);
+    await page.waitForFunction(() => window.__game.cutoutReady && window.__game.cutout.stats.coverage > 0.01, { timeout: 15000 });
+    await wait(400);
+
+    const stats = await page.evaluate(() => ({ ...window.__game.cutout.stats, view: window.__game.g.view }));
+    assert.equal(stats.view, 'cutout', 'cut-out is the default view');
+    assert.equal(stats.poseActive, true, 'driven by the pose model silhouette');
+    assert.ok(stats.coverage > 0.02 && stats.coverage < 0.3, `only a person-sized part of the screen is shown (${(stats.coverage * 100).toFixed(1)}%)`);
+
+    // The photo's background is bright blue sky / sea; the game must show the disco there instead.
+    const src = await backgroundSource(page);
+    assert.ok(src.dBackdrop < 25, `background matches the cartoon backdrop (distance ${src.dBackdrop.toFixed(0)})`);
+    assert.ok(src.dCamera > 40, `...and is NOT the camera's sky and sea (distance ${src.dCamera.toFixed(0)})`);
+    // ...while the man's face (warm skin tones) is shown where he stands.
+    const face = await patch(page, 0.52, 0.4, 5);
+    assert.ok(face.r > face.b + 15 && face.r > 70, `the kid is visible (${face.r.toFixed(0)},${face.g.toFixed(0)},${face.b.toFixed(0)})`);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('CUT-OUT: B switches between the cut-out and the whole camera picture', { skip }, async () => {
+  const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
+  try {
+    const { page, problems } = await openGame(browser, url + '?model=full');
+    await waitForState(page, 'menu', 60000);
+    await page.keyboard.press('Space');
+    await page.keyboard.press('4');
+    await waitForState(page, 'play', 10000);
+    await wait(1200);
+    const showsCamera = async () => {
+      const s = await backgroundSource(page);
+      return s.dCamera < 25 && s.dBackdrop > 40;
+    };
+    const showsBackdrop = async () => {
+      const s = await backgroundSource(page);
+      return s.dBackdrop < 25 && s.dCamera > 40;
+    };
+    assert.equal(await showsBackdrop(), true, 'cut-out view: the cartoon backdrop is behind the kid');
+    await page.keyboard.press('b');
+    await wait(300);
+    assert.equal(await page.evaluate(() => window.__game.g.view), 'camera');
+    assert.equal(await showsCamera(), true, 'camera view: the real camera picture fills the screen');
+    await page.keyboard.press('b');
+    await wait(300);
+    assert.equal(await page.evaluate(() => window.__game.g.view), 'cutout');
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('CUT-OUT: a pose-tracking glitch fades the kid out gently instead of popping, and they return when tracking does', { skip }, async () => {
+  const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
+  try {
+    const { page, problems } = await openGame(browser, url + '?model=full');
+    await waitForState(page, 'menu', 60000);
+    await page.keyboard.press('Space');
+    await page.keyboard.press('4');
+    await waitForState(page, 'play', 10000);
+    await page.waitForFunction(() => window.__game.cutoutReady && window.__game.cutout.stats.coverage > 0.02, { timeout: 15000 });
+    await wait(1500);
+
+    // make the pose model "lose" everyone on demand
+    await page.evaluate(() => {
+      const lm = window.__game.tracker.landmarker;
+      const real = lm.detectForVideo.bind(lm);
+      window.__lost = false;
+      lm.detectForVideo = (v, t) => (window.__lost ? { landmarks: [], worldLandmarks: [], segmentationMasks: [] } : real(v, t));
+    });
+    const coverage = () => page.evaluate(() => window.__game.cutout.stats.coverage);
+    const before = await coverage();
+    assert.ok(before > 0.02, `kid shown before the glitch (${before})`);
+
+    await page.evaluate(() => (window.__lost = true));
+    await wait(250);
+    const early = await coverage();
+    assert.ok(early > before * 0.6, `0.25s after losing the pose the kid is still there (${early.toFixed(3)} vs ${before.toFixed(3)})`);
+    assert.equal(await page.evaluate(() => window.__game.cutout.stats.poseActive), false, 'the pose mask really is gone');
+
+    await wait(5500);
+    const late = await coverage();
+    assert.ok(late < before * 0.2, `a kid whose tracking never comes back eventually fades out (${late.toFixed(3)})`);
+
+    await page.evaluate(() => (window.__lost = false));
+    await page.waitForFunction((b) => window.__game.cutout.stats.coverage > b * 0.8, { timeout: 5000 }, before);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('BACKDROPS: every level has its own cartoon world and they all draw cleanly', { skip }, async () => {
+  const browser = await launch(exe);
+  try {
+    const { page, problems } = await openGame(browser, url + '?mouse');
+    await waitForState(page, 'menu', 20000);
+    const sigs = await page.evaluate(() => {
+      const { backdrops } = window.__game;
+      const W = 1280, H = 720;
+      const c = document.createElement('canvas');
+      c.width = W; c.height = H;
+      const x = c.getContext('2d');
+      const out = {};
+      for (const id of ['menu', 'bubbles', 'dodge', 'jump', 'dance', 'finale']) {
+        x.clearRect(0, 0, W, H);
+        backdrops.draw(x, id, W, H, 3.7);
+        // 4x4 grid of average colours = a fingerprint of the scene
+        const sig = [];
+        for (let gy = 0; gy < 4; gy++) for (let gx = 0; gx < 4; gx++) {
+          const d = x.getImageData((gx * W) / 4, (gy * H) / 4, W / 4, H / 4).data;
+          let r = 0, g = 0, b = 0, a = 0;
+          for (let i = 0; i < d.length; i += 16) { r += d[i]; g += d[i + 1]; b += d[i + 2]; a += d[i + 3]; }
+          const n = d.length / 16;
+          sig.push([r / n, g / n, b / n, a / n]);
+        }
+        out[id] = sig;
+      }
+      return out;
+    });
+    const ids = Object.keys(sigs);
+    for (const id of ids) {
+      assert.ok(sigs[id].every((p) => p[3] > 250), `${id} fills the whole screen`);
+    }
+    for (let i = 0; i < ids.length; i++)
+      for (let j = i + 1; j < ids.length; j++) {
+        const d = sigs[ids[i]].reduce((s, p, k) => s + Math.hypot(p[0] - sigs[ids[j]][k][0], p[1] - sigs[ids[j]][k][1], p[2] - sigs[ids[j]][k][2]), 0) / 16;
+        assert.ok(d > 25, `${ids[i]} and ${ids[j]} look different (distance ${d.toFixed(0)})`);
+      }
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('ON-SCREEN TEXT: every string the game paints is intact, in the menu, all four levels and the finale', { skip }, async () => {
+  const browser = await launch(exe);
+  try {
+    const { page, problems } = await openGame(browser, url + '?mouse');
+    await waitForState(page, 'menu', 20000);
+    // record every string drawn to the canvas
+    await page.evaluate(() => {
+      window.__texts = new Set();
+      const orig = CanvasRenderingContext2D.prototype.fillText;
+      CanvasRenderingContext2D.prototype.fillText = function (s, ...a) {
+        window.__texts.add(String(s));
+        return orig.call(this, s, ...a);
+      };
+    });
+    await page.mouse.move(640, 300);
+    await wait(400);
+    for (const key of ['1', '2', '3', '4']) {
+      await page.keyboard.press(key);
+      await waitForState(page, 'play', 10000);
+      if (key === '4') for (const k of ['q', 'w', 'e']) await page.keyboard.down(k); // hold every pose
+      for (let i = 0; i < 55; i++) {
+        await page.mouse.move(200 + ((i * 97) % 900), 150 + ((i * 53) % 400));
+        if (key === '3' && i % 8 === 0) {
+          await page.mouse.down();
+          await wait(40);
+          await page.mouse.up();
+        }
+        await wait(100);
+      }
+      for (const k of ['q', 'w', 'e']) await page.keyboard.up(k);
+    }
+    await page.keyboard.press('n'); // finale
+    await wait(600);
+
+    const texts = await page.evaluate(() => [...window.__texts]);
+    // Garbled UTF-8 shows up as a Latin lead letter (char code 0xE2, 0xC3 or 0xF0) followed by a junk character.
+    const LEAD = [0xe2, 0xc3, 0xf0];
+    const garbled = texts.filter((s) => [...s].some((c, i, arr) => LEAD.includes(c.charCodeAt(0)) && i + 1 < arr.length));
+    assert.deepEqual(garbled, [], 'no garbled text on screen');
+    // ...and the real symbols did get drawn: wave arrows, score stars, dance ticks, winner crown
+    const joined = texts.join('\n');
+    for (const [sym, what] of [['→', 'wave countdown arrow'], ['★', 'score star'], ['✓', 'dance tick'], ['👑', 'winner crown']])
+      assert.ok(joined.includes(sym), `${what} was drawn`);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('MOUSE MODE: every level can be started and played without errors', { skip }, async () => {
+  const browser = await launch(exe);
+  try {
+    const { page, problems } = await openGame(browser, url + '?mouse');
+    await waitForState(page, 'menu', 20000);
+    await page.mouse.move(640, 300);
+
+    for (const [key, id] of [['1', 'bubbles'], ['2', 'dodge'], ['3', 'jump'], ['4', 'dance']]) {
+      await page.keyboard.press(key);
+      await waitForState(page, 'play', 8000);
+      assert.equal(await page.evaluate(() => window.__game.g.level.id), id);
+      for (let i = 0; i < 20; i++) {
+        await page.mouse.move(200 + ((i * 131) % 900), 150 + ((i * 71) % 400));
+        await wait(60);
+      }
+    }
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('MOUSE MODE: popping bubbles scores for the player and the team', { skip }, async () => {
+  const browser = await launch(exe);
+  try {
+    const { page, problems } = await openGame(browser, url + '?mouse');
+    await waitForState(page, 'menu', 20000);
+    await page.keyboard.press('1');
+    await waitForState(page, 'play', 8000);
+    // Park the "hand" on whatever bubble is on screen until something pops.
+    await page.waitForFunction(
+      () => {
+        const g = window.__game.g;
+        const b = g.level.items[0];
+        if (b) window.__game.tracker.pos = { x: b.x, y: b.y };
+        return g.team.score > 0;
+      },
+      { polling: 30, timeout: 20000 },
+    );
+    const s = await page.evaluate(() => ({ team: window.__game.g.team.score, p: window.__game.g.players[0].score }));
+    assert.ok(s.team >= 1 && s.p >= 1);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('MOUSE MODE: a well-timed jump scores in the jump level, standing still does not', { skip }, async () => {
+  const browser = await launch(exe);
+  try {
+    const { page, problems } = await openGame(browser, url + '?mouse');
+    await waitForState(page, 'menu', 20000);
+    await page.mouse.move(640, 300);
+    await page.keyboard.press('3');
+    await waitForState(page, 'play', 8000);
+
+    const waveNear = () =>
+      page.waitForFunction(
+        () => window.__game.g.level.waves.some((w) => w.t >= 0 && ((w.dir > 0 && w.x > 300 && w.x < 560) || (w.dir < 0 && w.x < 980 && w.x > 720))),
+        { polling: 20, timeout: 15000 },
+      );
+
+    const firstFeedback = async () => {
+      await page.waitForFunction(() => window.__game.g.level.feedback.length > 0, { polling: 20, timeout: 5000 });
+      return page.evaluate(() => {
+        const p = window.__game.g.players[0];
+        return { ...window.__game.g.level.feedback[0], flashing: p.flashUntil > window.__game.g.now };
+      });
+    };
+
+    await waveNear(); // 1st wave: stand still
+    const miss = await firstFeedback();
+    assert.equal(miss.ok, false);
+    assert.match(miss.text, /SPLASH|EARLY/, 'a miss is clearly announced on screen');
+    assert.equal(miss.flashing, true, 'and the skeleton flashes');
+    assert.equal(await page.evaluate(() => window.__game.g.players[0].score), 0, 'no jump, no points');
+
+    await page.waitForFunction(() => window.__game.g.level.feedback.length === 0, { timeout: 5000 }); // message goes away
+    await waveNear(); // 2nd wave: jump
+    await page.mouse.down();
+    await wait(120);
+    await page.mouse.up();
+    const hit = await firstFeedback();
+    assert.equal(hit.ok, true);
+    assert.match(hit.text, /NICE JUMP/, 'a good jump is clearly celebrated on screen');
+    assert.equal(hit.flashing, true);
+    assert.equal(await page.evaluate(() => window.__game.g.players[0].score), 1, 'one jump, one point');
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('MOUSE MODE: the full game loop runs from menu to finale and into a harder round', { skip }, async () => {
+  const browser = await launch(exe);
+  try {
+    const { page, problems } = await openGame(browser, url + '?mouse');
+    await waitForState(page, 'menu', 20000);
+    await page.keyboard.press('Space');
+    for (const id of ['bubbles', 'dodge', 'jump', 'dance']) {
+      await waitForState(page, 'intro', 8000);
+      assert.equal(await page.evaluate(() => window.__game.g.level.id), id);
+      await waitForState(page, 'play', 8000);
+      await page.keyboard.press('n'); // skip to the next level instead of waiting 30s
+    }
+    await waitForState(page, 'finale', 8000);
+    await page.keyboard.press('Space'); // next round
+    await waitForState(page, 'intro', 5000);
+    const diff = await page.evaluate(() => window.__game.g.diff);
+    assert.ok(diff > 1, `second round is harder (diff=${diff})`);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('AUTO-START (real camera): a kid holding their arms out starts the game by themselves after ~3 seconds', { skip }, async () => {
+  const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]); // photo = arms out
+  try {
+    const { page, problems } = await openGame(browser, url);
+    await waitForState(page, 'menu', 60000);
+    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 20000 });
+    const t0 = Date.now();
+    assert.equal(await page.evaluate(() => window.__game.state), 'menu', 'does not start instantly');
+    await waitForState(page, 'intro', 15000); // nobody touched the keyboard
+    const secs = (Date.now() - t0) / 1000;
+    assert.ok(secs >= 2.5 && secs < 8, `started after ${secs.toFixed(1)}s of arms-out`);
+    const joined = await page.evaluate(() => ({ playing: window.__game.g.activePlayers().length, excluded: window.__game.g.players.filter((p) => p.excluded).length }));
+    assert.deepEqual(joined, { playing: 1, excluded: 0 });
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('AUTO-START (mouse mode): holding the airplane pose (W) for 3s starts the game; releasing early does not', { skip }, async () => {
+  const browser = await launch(exe);
+  try {
+    const { page, problems } = await openGame(browser, url + '?mouse');
+    await waitForState(page, 'menu', 20000);
+    await page.mouse.move(640, 300);
+
+    await page.keyboard.down('w'); // arms out for only ~1.5s...
+    await wait(1500);
+    await page.keyboard.up('w');
+    await wait(1200); // ...then drop them: countdown is cancelled
+    assert.equal(await page.evaluate(() => window.__game.state), 'menu');
+    assert.equal(await page.evaluate(() => window.__game.g.activePlayers()[0].excluded), undefined);
+
+    const t0 = Date.now();
+    await page.keyboard.down('w');
+    await waitForState(page, 'intro', 10000);
+    await page.keyboard.up('w');
+    const secs = (Date.now() - t0) / 1000;
+    assert.ok(secs >= 2.8 && secs < 5, `took ${secs.toFixed(1)}s`);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('JOINING: a kid who does not put their arms out is left out of the game (no score, no hits, not in finale)', { skip }, async () => {
+  const browser = await launch(exe);
+  try {
+    const { page, problems } = await openGame(browser, url + '?mouse');
+    await waitForState(page, 'menu', 20000);
+    await page.mouse.move(400, 300);
+
+    // Add a second, visible kid standing at the right who never does the airplane pose.
+    await page.evaluate(async () => {
+      const { computeFeatures } = await import('/src/tracker.js');
+      const t = window.__game.tracker;
+      const orig = t.update.bind(t);
+      let bystander = null;
+      const stand = (cx) => {
+        const px = Array.from({ length: 33 }, () => ({ x: cx, y: 360 }));
+        const set = (i, x, y) => (px[i] = { x, y });
+        set(0, cx, 130); set(11, cx - 33, 200); set(12, cx + 33, 200);
+        set(23, cx - 27, 335); set(24, cx + 27, 335); set(25, cx - 27, 470); set(26, cx + 27, 470);
+        set(15, cx - 40, 300); set(16, cx + 40, 300); set(19, cx - 40, 310); set(20, cx + 40, 310);
+        return px;
+      };
+      t.update = (now) => {
+        const ps = orig(now);
+        bystander ??= { id: 99, color: '#ffffff', score: 0, jumps: 0, lastJump: -99, hitUntil: 0, pose: {}, px: stand(1000) };
+        bystander.seen = now;
+        bystander.present = true;
+        computeFeatures(bystander, now, { skipJump: true });
+        bystander.pose = { armsUp: false, airplane: false, handsHead: false };
+        return [...ps, bystander];
+      };
+      window.__bystander = () => bystander;
+    });
+    await wait(300);
+    assert.equal(await page.evaluate(() => window.__game.g.activePlayers().length), 2, 'both kids visible in the lobby');
+
+    await page.keyboard.down('w');
+    await waitForState(page, 'intro', 10000);
+    await page.keyboard.up('w');
+
+    const after = await page.evaluate(() => ({
+      playing: window.__game.g.activePlayers().map((p) => p.id),
+      bystanderExcluded: window.__bystander().excluded,
+    }));
+    assert.deepEqual(after.playing, [1], 'only the kid with arms out is playing');
+    assert.equal(after.bystanderExcluded, true);
+
+    // They stay out of the action: bubbles popped by the bystander's hands don't score for them.
+    await waitForState(page, 'play', 8000);
+    await page.evaluate(() => {
+      const b = window.__bystander();
+      window.__game.g.level.items = [{ x0: b.hands[0].x, x: b.hands[0].x, y: b.hands[0].y, r: 80, vy: 0, amp: 0, f: 1, ph: 0, gold: false }];
+      window.__game.g.level.spawn = 999;
+    });
+    await wait(500);
+    assert.equal(await page.evaluate(() => window.__bystander().score), 0, 'bystander cannot score');
+    assert.equal(await page.evaluate(() => window.__game.g.level.items.length), 1, 'their hands do not pop bubbles');
+
+    // Going back to the menu gives everybody a fresh chance to join.
+    await page.keyboard.press('Escape');
+    await waitForState(page, 'menu', 3000);
+    assert.equal(await page.evaluate(() => window.__bystander().excluded), false);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('FALLBACK: with no camera available the game still starts, in mouse mode, with a notice', { skip }, async () => {
+  // Deny camera access by not passing the fake-device flags.
+  const puppeteer = (await import('puppeteer-core')).default;
+  const browser = await puppeteer.launch({ executablePath: exe, headless: 'new', args: ['--deny-permission-prompts'], defaultViewport: { width: 1280, height: 720 } });
+  try {
+    const { page } = await openGame(browser, url);
+    await waitForState(page, 'menu', 60000);
+    const notice = await page.evaluate(() => window.__game.g.notice);
+    assert.match(notice, /No camera/);
+    assert.equal(await page.evaluate(() => window.__game.tracker.delegate), 'mouse');
+  } finally {
+    await browser.close();
+  }
+});

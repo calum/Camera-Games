@@ -1,0 +1,5 @@
+node_modules/
+*.y4m
+*.log
+.DS_Store
+.claude/

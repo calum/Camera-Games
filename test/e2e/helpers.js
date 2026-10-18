@@ -1,0 +1,104 @@
+// Helpers for the browser end-to-end tests.
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import puppeteer from 'puppeteer-core';
+import { createGameServer } from '../../server.mjs';
+
+export const wait = (ms) => new Promise((r) => setTimeout(r, ms));
+
+// Finds Edge/Chrome. Set BROWSER_PATH to override. Returns null if none installed.
+export function findBrowser() {
+  const candidates = [
+    process.env.BROWSER_PATH,
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium',
+    '/usr/bin/chromium-browser',
+    '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+  ];
+  return candidates.find((p) => p && fs.existsSync(p)) || null;
+}
+
+export async function startServer() {
+  const server = createGameServer();
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  return { server, url: `http://localhost:${server.address().port}/` };
+}
+
+// Turn a still photo into a looping fake-webcam video (.y4m) so Chrome/Edge "see" a person.
+export async function makeFakeWebcamFile(browser, jpgPath, W = 640, H = 480) {
+  const page = await browser.newPage();
+  const b64 = fs.readFileSync(jpgPath).toString('base64');
+  const rgba = await page.evaluate(
+    async (b64, W, H) => {
+      const img = new Image();
+      img.src = 'data:image/jpeg;base64,' + b64;
+      await img.decode();
+      const c = document.createElement('canvas');
+      c.width = W;
+      c.height = H;
+      const x = c.getContext('2d');
+      x.fillStyle = '#808080';
+      x.fillRect(0, 0, W, H);
+      const s = Math.min(W / img.width, H / img.height);
+      x.drawImage(img, (W - img.width * s) / 2, (H - img.height * s) / 2, img.width * s, img.height * s);
+      return Array.from(x.getImageData(0, 0, W, H).data);
+    },
+    b64,
+    W,
+    H,
+  );
+  await page.close();
+
+  const clamp = (v) => Math.max(0, Math.min(255, v));
+  const Y = Buffer.alloc(W * H);
+  const U = Buffer.alloc((W / 2) * (H / 2));
+  const V = Buffer.alloc((W / 2) * (H / 2));
+  for (let j = 0; j < H; j++)
+    for (let i = 0; i < W; i++) {
+      const k = (j * W + i) * 4;
+      Y[j * W + i] = clamp(0.299 * rgba[k] + 0.587 * rgba[k + 1] + 0.114 * rgba[k + 2]);
+    }
+  for (let j = 0; j < H / 2; j++)
+    for (let i = 0; i < W / 2; i++) {
+      const k = (j * 2 * W + i * 2) * 4;
+      const [r, g, b] = [rgba[k], rgba[k + 1], rgba[k + 2]];
+      U[j * (W / 2) + i] = clamp(128 - 0.168736 * r - 0.331264 * g + 0.5 * b);
+      V[j * (W / 2) + i] = clamp(128 + 0.5 * r - 0.418688 * g - 0.081312 * b);
+    }
+  const parts = [Buffer.from(`YUV4MPEG2 W${W} H${H} F30:1 Ip A1:1 C420jpeg\n`)];
+  for (let f = 0; f < 30; f++) parts.push(Buffer.from('FRAME\n'), Y, U, V);
+  const file = path.join(os.tmpdir(), `kcg-fake-webcam-${process.pid}.y4m`);
+  fs.writeFileSync(file, Buffer.concat(parts));
+  return file;
+}
+
+export function launch(executablePath, extraArgs = []) {
+  return puppeteer.launch({
+    executablePath,
+    headless: 'new',
+    args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', ...extraArgs],
+    defaultViewport: { width: 1280, height: 720 },
+  });
+}
+
+// Opens the game and records anything that would be a bug (uncaught errors, console errors).
+// 404s are ignored: the optional custom-art PNGs are expected to be missing.
+export async function openGame(browser, url) {
+  const page = await browser.newPage();
+  const problems = [];
+  page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if (m.type() === 'error' && !/404/.test(m.text())) problems.push(`console.error: ${m.text()}`);
+  });
+  await page.goto(url, { waitUntil: 'load' });
+  return { page, problems };
+}
+
+export const gameState = (page) => page.evaluate(() => window.__game.state);
+export const waitForState = (page, state, timeout = 30000) =>
+  page.waitForFunction((s) => window.__game?.state === s, { timeout }, state);
