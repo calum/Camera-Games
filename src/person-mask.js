@@ -36,6 +36,44 @@ export function downsampleMaxInto(src, sw, sh, out, w, h) {
   }
 }
 
+// A rough silhouette drawn from the skeleton: thick capsules along the limbs and torso and a disc for the
+// head, written (as 1s, OR-ed in) into `out` (w x h). Used when the pose model gives no silhouettes (the
+// cheapest rung of the quality ladder). Without it the cut-out has nothing to start from and the kids
+// vanish from the picture while their skeletons keep moving. Landmarks are the model's normalised ones
+// (0..1 across the camera frame), so they line up with the mask without any mirroring.
+const LIMBS = [
+  [11, 13], [13, 15], [12, 14], [14, 16], // arms
+  [23, 25], [25, 27], [24, 26], [26, 28], // legs
+  [11, 23], [12, 24], [11, 12], [23, 24], // torso outline
+];
+export function skeletonMaskInto(landmarks, out, w, h) {
+  const seen = (l) => l && (l.visibility ?? 1) >= 0.2;
+  for (const lm of landmarks) {
+    const ls = lm[11];
+    const rs = lm[12];
+    if (!seen(ls) || !seen(rs)) continue;
+    const sw = Math.max(4, Math.hypot((ls.x - rs.x) * w, (ls.y - rs.y) * h)); // shoulder width in mask pixels
+    const capsule = (a, b, r) => {
+      const ax = a.x * w, ay = a.y * h, bx = b.x * w, by = b.y * h;
+      const dx = bx - ax, dy = by - ay;
+      const len2 = dx * dx + dy * dy || 1;
+      const x0 = Math.max(0, Math.floor(Math.min(ax, bx) - r)), x1 = Math.min(w - 1, Math.ceil(Math.max(ax, bx) + r));
+      const y0 = Math.max(0, Math.floor(Math.min(ay, by) - r)), y1 = Math.min(h - 1, Math.ceil(Math.max(ay, by) + r));
+      for (let j = y0; j <= y1; j++)
+        for (let i = x0; i <= x1; i++) {
+          const t = Math.max(0, Math.min(1, ((i + 0.5 - ax) * dx + (j + 0.5 - ay) * dy) / len2));
+          if (Math.hypot(i + 0.5 - ax - t * dx, j + 0.5 - ay - t * dy) <= r) out[j * w + i] = 1;
+        }
+    };
+    for (const [a, b] of LIMBS) if (seen(lm[a]) && seen(lm[b])) capsule(lm[a], lm[b], sw * 0.22);
+    // the body between the shoulders and hips, and the head
+    const mid = (p, q) => ({ x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 });
+    if (seen(lm[23]) && seen(lm[24])) capsule(mid(ls, rs), mid(lm[23], lm[24]), sw * 0.45);
+    if (seen(lm[0])) capsule(lm[0], lm[0], sw * 0.5);
+    if (seen(lm[0])) capsule(lm[0], mid(ls, rs), sw * 0.25); // neck
+  }
+}
+
 // Separable box blur (radius r) of a Float32Array, written into dst (tmp is scratch).
 function boxBlur(src, dst, tmp, w, h, r) {
   const k = 1 / (2 * r + 1);

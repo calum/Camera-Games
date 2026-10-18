@@ -41,7 +41,10 @@ async function cacheFirst(req) {
 async function networkFirst(req) {
   const cache = await caches.open(CODE);
   try {
-    const res = await fetch(req);
+    // no-cache: always check with the server (a cheap "not modified" when nothing changed). Without it the
+    // browser's own cache (GitHub Pages allows 10 minutes) could hand out an old file next to a new one
+    // for a while after an update, a mix of versions that was never tested together.
+    const res = await fetch(req, { cache: 'no-cache' });
     if (res.ok) cache.put(req, res.clone());
     return res;
   } catch (err) {
