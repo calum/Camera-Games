@@ -693,7 +693,7 @@ test('MOUSE MODE: a well-timed jump scores in the jump level, standing still doe
   }
 });
 
-test('PICKER (mouse mode): hold the hand over a card to play that level, then come back to the picker, not the next level', { skip }, async () => {
+test('PICKER (mouse mode): scroll to a level and hold both arms up to play it, then come back to the picker, not the next level', { skip }, async () => {
   const browser = await launch(exe);
   try {
     const { page, problems } = await openGame(browser, url + '?mouse');
@@ -701,37 +701,42 @@ test('PICKER (mouse mode): hold the hand over a card to play that level, then co
     await page.mouse.move(640, 650);
     await page.keyboard.press('Space');
     await waitForState(page, 'pick', 3000);
-    // the mouse is the kid's hand: rest it on the 4th card until the ring fills
     const ids = await page.evaluate(() => window.__game.levels.map((l) => l.id));
-    const card = await page.evaluate(() => {
-      const c = document.getElementById('c');
-      const r = window.__game.pickRects[3];
-      const k = c.getBoundingClientRect().width / c.width;
-      return { x: (r.x + r.w / 2) * k, y: (r.y + r.h / 2) * k };
-    });
-    await page.mouse.move(card.x, card.y);
+    assert.equal(await page.evaluate(() => window.__game.carousel.index), 0, 'starts on the first game');
+    for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
+    assert.equal(await page.evaluate(() => window.__game.carousel.index), 3);
+    // both arms up (Q in mouse mode) until the ring fills
     const t0 = Date.now();
+    await page.keyboard.down('q');
     await waitForState(page, 'intro', 8000);
-    assert.ok(Date.now() - t0 > 1000, 'it takes a deliberate hold, not a fly-past');
+    await page.keyboard.up('q');
+    assert.ok(Date.now() - t0 > 700, 'it takes a deliberate hold');
     assert.equal(await page.evaluate(() => window.__game.g.level.id), ids[3]);
-    await page.mouse.move(640, 650); // hand away from the cards
-    // finish the level: back to the picker, with no level running
+    // finish the level: back to the picker, with no level running and the game just played in the middle
     await waitForState(page, 'play', 8000);
     await page.evaluate(() => window.__game.g.endLevel('Level complete!'));
     await waitForState(page, 'pick', 10000);
     assert.equal(await page.evaluate(() => window.__game.g.level), null, 'no level runs on by itself');
+    assert.equal(await page.evaluate(() => window.__game.carousel.index), 3, '"again!" is one arms-up away');
     await wait(3000);
     assert.equal(await page.evaluate(() => window.__game.state), 'pick', 'still waiting for a choice');
-    // the grown-up can tap a card instead
-    const tap = await page.evaluate(() => {
-      const c = document.getElementById('c');
-      const r = window.__game.pickRects[1];
-      const k = c.getBoundingClientRect().width / c.width;
-      return { x: (r.x + r.w / 2) * k, y: (r.y + r.h / 2) * k };
-    });
-    await page.mouse.click(tap.x, tap.y);
+    // the grown-up can tap: a side card scrolls to it, the middle card plays
+    const tapCard = async (off) => {
+      const pt = await page.evaluate((off) => {
+        const c = document.getElementById('c');
+        const r = window.__game.pickCards().find((card) => Math.round(card.off) === off).rect;
+        const k = c.getBoundingClientRect().width / c.width;
+        return { x: (r.x + r.w / 2) * k, y: (r.y + r.h / 2) * k };
+      }, off);
+      await page.mouse.click(pt.x, pt.y);
+    };
+    await tapCard(1);
+    await wait(500);
+    assert.equal(await page.evaluate(() => window.__game.carousel.index), 4);
+    assert.equal(await page.evaluate(() => window.__game.state), 'pick', 'a side card only scrolls');
+    await tapCard(0);
     await waitForState(page, 'intro', 2000);
-    assert.equal(await page.evaluate(() => window.__game.g.level.id), ids[1]);
+    assert.equal(await page.evaluate(() => window.__game.g.level.id), ids[4]);
     // Esc: from a level back to the picker, then to the join screen
     await page.keyboard.press('Escape');
     await waitForState(page, 'pick', 2000);
@@ -770,6 +775,11 @@ test('AUTO-START (real camera): a kid holding their arms out starts the game by 
     assert.ok(gameSecs < 8, `started after ${gameSecs.toFixed(1)} s of game time (${secs.toFixed(1)} s on the clock)`);
     const joined = await page.evaluate(() => ({ playing: window.__game.g.activePlayers().length, excluded: window.__game.g.players.filter((p) => p.excluded).length }));
     assert.deepEqual(joined, { playing: 1, excluded: 0 });
+    // the kid keeps their arms out like an airplane in the picker: that is both hands out at once, so it must
+    // neither scroll nor play a game
+    const seq = await page.evaluate(() => window.__game.tracker.frameSeq);
+    await page.waitForFunction((s) => window.__game.tracker.frameSeq >= s + 6, { timeout: 60000 }, seq);
+    assert.deepEqual(await page.evaluate(() => ({ state: window.__game.state, index: window.__game.carousel.index })), { state: 'pick', index: 0 });
     assert.deepEqual(problems, []);
   } finally {
     await browser.close();
@@ -967,10 +977,10 @@ test('TOUCH: tapping the screen shows the grown-up buttons; Start starts the gam
     await waitForState(page, 'pick', 3000);
     const picking = await page.evaluate(() => [...document.querySelectorAll('#controls button')].filter((b) => !b.hidden).map((b) => b.dataset.action));
     assert.ok(picking.includes('menu') && !picking.includes('next'), `picker buttons: ${picking}`);
-    // tap the first card (bubbles)
+    // tap the middle card (the first game, bubbles)
     const card = await page.evaluate(() => {
       const c = document.getElementById('c');
-      const r = window.__game.pickRects[0];
+      const r = window.__game.pickCards().find((card) => card.off === 0).rect;
       const k = c.getBoundingClientRect().width / c.width;
       return { x: (r.x + r.w / 2) * k, y: (r.y + r.h / 2) * k };
     });

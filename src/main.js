@@ -6,7 +6,7 @@ import { Ease } from './ease.js';
 import { loadArt, drawArt, registerArt } from './art.js';
 import { text, drawSkeleton, drawHeart } from './draw.js';
 import { Lobby, lateJoin } from './lobby.js';
-import { Picker, pickerChoices, pickerLayout, pickingHands, cardAt, surprisePick, drawPicker } from './picker.js';
+import { Carousel, pickerChoices, carouselLayout, carouselCardAt, surprisePick, drawPicker } from './picker.js';
 import { Cutout } from './cutout.js';
 import { Backdrops } from './backdrops.js';
 import { loadSavedCamera } from './camera.js';
@@ -91,12 +91,11 @@ let levelIdx = 0;
 let lastPlayed = -1; // so "Surprise!" never picks the level just played
 let levelT = 0;
 const lobby = new Lobby({ hold: 3 });
-const picker = new Picker();
 const choices = pickerChoices(LEVELS);
-let pickRects = pickerLayout(choices.length, g.W, g.H, g.u);
-let pickHands = [];
-/** @type {Record<number, number>} */
-const wiggle = {}; // card -> when a hand last moved onto it
+const carousel = new Carousel({ n: choices.length });
+let lastStep = -9; // when the carousel last scrolled (the middle card bounces)
+// The cards as drawn this frame (for taps, and for the tests)
+const pickCards = () => carouselLayout(choices.length, carousel.pos, g.W, g.H);
 // Playing with family in another home (docs/ONLINE.md). Idle unless the grown-up opens a room (key O) or the page
 // was opened with ?room=CODE.
 const family = new Family({ canvas, search: location.search, origin: location.origin + location.pathname, signal: params.get('signal') || SIGNAL_URL });
@@ -123,7 +122,7 @@ function toMenu() {
 // The level picker: the kids who joined choose what to play, and come back here after every level.
 function toPick() {
   g.level = null;
-  picker.reset();
+  carousel.reset(lastPlayed >= 0 ? lastPlayed : 0); // the game just played is in the middle: "again!" is arms up
   setState('pick');
 }
 
@@ -263,7 +262,7 @@ window.addEventListener('resize', resize);
 const actions = {
   start() {
     if (state === 'menu') startGame();
-    else if (state === 'pick') choose(choices.length - 1); // Surprise!
+    else if (state === 'pick') choose(carousel.index); // the game in the middle
   },
   next() {
     if (g.level && inLevel()) nextLevel();
@@ -292,6 +291,7 @@ window.addEventListener('keydown', (e) => {
     actions.start();
     e.preventDefault();
   } else if (k === 'n') actions.next();
+  else if ((k === 'arrowleft' || k === 'arrowright') && state === 'pick') scroll(k === 'arrowleft' ? -1 : 1);
   else if (k >= '1' && k <= '9' && Number(k) <= LEVELS.length && state !== 'loading') {
     if (state === 'menu') g.team.score = 0;
     startLevel(Number(k) - 1);
@@ -318,13 +318,21 @@ window.addEventListener('keydown', (e) => {
   }
 });
 window.addEventListener('pointerdown', unlock);
-// A grown-up can tap (or click) a card in the picker instead of waiting for a kid's hand.
+// A grown-up can tap (or click) the picker: a side card scrolls to it, the middle card plays.
 canvas.addEventListener('pointerdown', (e) => {
   if (state !== 'pick') return;
   const r = canvas.getBoundingClientRect();
-  const i = cardAt(pickRects, { x: ((e.clientX - r.left) * canvas.width) / r.width, y: ((e.clientY - r.top) * canvas.height) / r.height }, 0);
-  if (i >= 0) choose(i);
+  const card = carouselCardAt(pickCards(), { x: ((e.clientX - r.left) * canvas.width) / r.width, y: ((e.clientY - r.top) * canvas.height) / r.height });
+  if (!card) return;
+  if (card.i === carousel.index) choose(card.i);
+  else scroll(Math.sign(card.off) * Math.max(1, Math.round(Math.abs(card.off))));
 });
+
+function scroll(d) {
+  carousel.step(d);
+  lastStep = g.now;
+  sfx.whoosh();
+}
 
 createControls(actions, {
   state: () => state,
@@ -382,12 +390,10 @@ function update(dt) {
     const joinedIds = lobby.update(g.activePlayers(), g.now, dt);
     if (joinedIds) startGame(joinedIds);
   } else if (state === 'pick') {
-    pickRects = pickerLayout(choices.length, g.W, g.H, g.u);
-    pickHands = pickingHands(g.activePlayers());
-    const { chosen, entered } = picker.update(pickRects, pickHands, dt);
-    for (const i of entered) {
-      wiggle[i] = g.now;
-      sfx.tick();
+    const { step, chosen } = carousel.update(g.activePlayers(), dt);
+    if (step) {
+      lastStep = g.now;
+      sfx.whoosh();
     }
     if (chosen >= 0) choose(chosen);
   } else if (state === 'intro') {
@@ -570,8 +576,7 @@ function render() {
     ctx.fillStyle = 'rgba(8,12,30,0.3)';
     ctx.fillRect(0, 0, g.W, g.H);
     text(ctx, 'Pick a game!', g.W / 2, g.H * 0.07, 84 * u, { color: '#ffe14d' });
-    drawPicker(ctx, g, choices, pickRects, picker, pickHands, wiggle);
-    text(ctx, 'Hold a hand up over a picture', g.W / 2, g.H * 0.92, 44 * u);
+    drawPicker(ctx, g, choices, carousel, pickCards(), lastStep);
   } else if (state === 'intro') {
     ctx.fillStyle = 'rgba(8,12,30,0.4)';
     ctx.fillRect(0, 0, g.W, g.H);
@@ -643,4 +648,4 @@ requestAnimationFrame(frame);
 boot();
 
 // handy for debugging / automated tests
-/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get pickRects() { return pickRects; }, family };
+/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get carousel() { return carousel; }, pickCards, family };

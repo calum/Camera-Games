@@ -1,22 +1,38 @@
-// Level picker: hold a raised hand over a card until its ring fills.
+// Level picker carousel: wave a hand to the side to scroll, both arms up to play the game in the middle.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { Picker, pickerChoices, pickerLayout, pickingHands, cardAt, surprisePick } from '../../src/picker.js';
+import { Carousel, pickerChoices, carouselLayout, carouselCardAt, handsOut, surprisePick } from '../../src/picker.js';
 import { LEVELS } from '../../src/levels/index.js';
 
-const W = 1920;
-const H = 1080;
-const rects = pickerLayout(LEVELS.length + 1, W, H, 1);
-const centre = (r) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
+// A kid standing at x=500 with shoulders 100 px wide (so 1 shoulder width = 100 px). Hands are given as
+// [x, y] offsets from the middle of the shoulders, in shoulder widths (negative y = up).
+const S = 100;
+function kid(id, left, right, armsUp = false) {
+  const sh = { x: 500, y: 400 };
+  const at = ([dx, dy]) => ({ x: sh.x + dx * S, y: sh.y + dy * S });
+  const px = Array.from({ length: 33 }, () => ({ ...sh }));
+  px[0] = { x: 500, y: 300 }; // nose, 1 shoulder width above the shoulders
+  const l = at(left);
+  const r = at(right);
+  return /** @type {any} */ ({ id, sh, shoulderW: S, px, hands: [l, r, l, r], pose: { armsUp } });
+}
+const DOWN_L = [-0.3, 1.8]; // hands hanging by the hips
+const DOWN_R = [0.3, 1.8];
+const OUT_L = [-1.6, 0]; // straight out to the side at shoulder height
+const OUT_R = [1.6, 0];
+const UP_L = [-0.4, -2.2]; // straight up
+const UP_R = [0.4, -2.2];
 
-// Run the picker at 30 fps; hands(t) gives the hand points at each moment. Returns the chosen card and when.
-function run(picker, seconds, hands) {
+// Run at 30 fps for `seconds`; players(t) gives the kids at each moment. Returns every step and the first choice.
+function run(c, seconds, players, start = 0) {
   const dt = 1 / 30;
-  for (let t = 0; t < seconds; t += dt) {
-    const { chosen } = picker.update(rects, hands(t), dt);
-    if (chosen >= 0) return { chosen, t };
+  const steps = [];
+  for (let t = start; t < start + seconds; t += dt) {
+    const { step, chosen } = c.update(players(t), dt);
+    if (step) steps.push(step);
+    if (chosen >= 0) return { steps, chosen, t };
   }
-  return { chosen: -1, t: seconds };
+  return { steps, chosen: -1, t: start + seconds };
 }
 
 test('there is a card for every level plus Surprise, and every level has a picture', () => {
@@ -26,79 +42,133 @@ test('there is a card for every level plus Surprise, and every level has a pictu
   for (const L of LEVELS) assert.ok(L.icon, `${L.id} has an icon`);
 });
 
-test('the cards fit on screen, never overlap, and are big enough for a kid to aim at', () => {
-  for (const [w, h] of [[1920, 1080], [1280, 720], [1080, 1920], [800, 600]]) {
-    const u = h / 1080;
-    const rs = pickerLayout(LEVELS.length + 1, w, h, u);
-    for (const r of rs) {
-      assert.ok(r.x >= 0 && r.y >= 0 && r.x + r.w <= w && r.y + r.h <= h, `card inside ${w}x${h}`);
-      assert.ok(r.w >= Math.min(w, h) * 0.14, `card big enough at ${w}x${h} (${r.w.toFixed(0)}px)`);
-    }
-    for (let i = 0; i < rs.length; i++)
-      for (let j = i + 1; j < rs.length; j++) {
-        const a = rs[i];
-        const b = rs[j];
-        const overlap = a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-        assert.ok(!overlap, `cards ${i} and ${j} overlap at ${w}x${h}`);
-      }
-  }
+test('which side a hand is out to: right, left, both (airplane), and hands down or up count as neither', () => {
+  const none = { left: false, right: false };
+  assert.deepEqual(handsOut(kid(1, DOWN_L, OUT_R), none), { left: false, right: true });
+  assert.deepEqual(handsOut(kid(1, OUT_L, DOWN_R), none), { left: true, right: false });
+  assert.deepEqual(handsOut(kid(1, OUT_L, OUT_R), none), { left: true, right: true });
+  assert.deepEqual(handsOut(kid(1, DOWN_L, DOWN_R), none), none);
+  assert.deepEqual(handsOut(kid(1, UP_L, UP_R), none), none, 'arms straight up are not a wave');
+  assert.deepEqual(handsOut(kid(1, [-1.2, -2.2], [1.2, -2.2]), none), none, 'nor are arms up in a wide V');
+  assert.deepEqual(handsOut(kid(1, DOWN_L, [1.8, 1.8]), none), none, 'nor a hand low down to the side');
 });
 
-test('holding a hand over a card chooses it after about 1.5 s (plus the short wait when the picker opens)', () => {
-  const p = new Picker();
-  const { chosen, t } = run(p, 5, () => [centre(rects[3])]);
-  assert.equal(chosen, 3);
-  assert.ok(t > 2.2 && t < 2.5, `chosen after ${t.toFixed(2)}s`);
+test('a hand that is out stays out while it waves about, until it comes well back in', () => {
+  const out = { left: false, right: true };
+  assert.equal(handsOut(kid(1, DOWN_L, [0.8, 0]), out).right, true, 'waving inwards a bit');
+  assert.equal(handsOut(kid(1, DOWN_L, [0.8, 0]), { left: false, right: false }).right, false, 'but not enough to start out there');
+  assert.equal(handsOut(kid(1, DOWN_L, [0.4, 0]), out).right, false, 'back in front of the body');
 });
 
-test('no hand, or a hand between cards, never chooses anything', () => {
-  assert.equal(run(new Picker(), 10, () => []).chosen, -1);
-  const between = { x: (rects[0].x + rects[0].w + rects[1].x) / 2, y: H * 0.99 };
-  assert.equal(cardAt(rects, between), -1);
-  assert.equal(run(new Picker(), 10, () => [between]).chosen, -1);
+test('waving the right hand out once scrolls one card right; the left hand one card left', () => {
+  const c = new Carousel({ n: 12 });
+  const wave = (side) => (t) => [kid(1, side < 0 && t < 0.5 ? OUT_L : DOWN_L, side > 0 && t < 0.5 ? OUT_R : DOWN_R)];
+  assert.deepEqual(run(c, 1, wave(1)).steps, [1]);
+  assert.equal(c.index, 1);
+  assert.deepEqual(run(c, 1, wave(1)).steps, [1]);
+  assert.deepEqual(run(c, 1, wave(-1)).steps, [-1]);
+  assert.equal(c.index, 1);
 });
 
-test('tracking flicker does not reset the ring: the hand dropping out now and then only slows it down', () => {
-  const p = new Picker();
-  // the hand is lost for 2 frames in every 10
+test('the list wraps round both ways', () => {
+  const c = new Carousel({ n: 5 });
+  c.step(-1);
+  assert.equal(c.index, 4);
+  c.step(2);
+  assert.equal(c.index, 1);
+});
+
+test('holding a hand out keeps scrolling, slowly', () => {
+  const c = new Carousel({ n: 12 });
+  const { steps } = run(c, 3, () => [kid(1, DOWN_L, OUT_R)]);
+  // one straight away, then after 1 s, then every 0.7 s: about 4 in 3 s
+  assert.ok(steps.length >= 3 && steps.length <= 5, `${steps.length} steps in 3 s`);
+  assert.ok(steps.every((s) => s === 1));
+});
+
+test('airplane arms (the join gesture) do not scroll, even when one arm rises a moment before the other', () => {
+  const c = new Carousel({ n: 12 });
+  const { steps, chosen } = run(c, 3, (t) => [kid(1, t < 0.1 ? DOWN_L : OUT_L, OUT_R)]);
+  assert.deepEqual(steps, []);
+  assert.equal(chosen, -1);
+  assert.equal(c.index, 0);
+});
+
+test('both arms up for about a second plays the game in the middle', () => {
+  const c = new Carousel({ n: 12 });
+  c.reset(4);
+  run(c, 1, () => [kid(1, DOWN_L, DOWN_R)]); // standing there first
+  const { chosen, t } = run(c, 3, () => [kid(1, UP_L, UP_R, true)], 1);
+  assert.equal(chosen, 4);
+  assert.ok(t - 1 > 0.9 && t - 1 < 1.2, `took ${(t - 1).toFixed(2)} s`);
+});
+
+test('arms up already in the air when the picker opens (cheering at the end of a level) does not play anything', () => {
+  const c = new Carousel({ n: 12 });
+  assert.equal(run(c, 4, () => [kid(1, UP_L, UP_R, true)]).chosen, -1, 'kept up the whole time');
+  // ...but once they have put their arms down, arms up works
+  run(c, 0.3, () => [kid(1, DOWN_L, DOWN_R)]);
+  assert.equal(run(c, 2, () => [kid(1, UP_L, UP_R, true)]).chosen, 0);
+});
+
+test('tracking flicker does not reset the arms-up ring: arms dropping out now and then only slows it', () => {
+  const c = new Carousel({ n: 12 });
+  run(c, 1, () => [kid(1, DOWN_L, DOWN_R)]);
   let n = 0;
-  const { chosen, t } = run(p, 8, () => (n++ % 10 < 8 ? [centre(rects[5])] : []));
-  assert.equal(chosen, 5);
-  assert.ok(t < 3.5, `still chosen quickly (${t.toFixed(2)}s)`);
+  const { chosen, t } = run(c, 4, () => [n++ % 10 < 8 ? kid(1, UP_L, UP_R, true) : kid(1, DOWN_L, DOWN_R)], 1);
+  assert.equal(chosen, 0);
+  assert.ok(t - 1 < 2, `still quick (${(t - 1).toFixed(2)} s)`);
 });
 
-test('taking the hand away drains the ring slowly, and moving to another card starts that one from empty', () => {
-  const p = new Picker();
-  run(p, 1.8, () => [centre(rects[0])]); // 0.8 s wait + 1 s of filling: ring two-thirds full
-  const before = p.progress(0);
-  assert.ok(before > 0.5 && before < 0.8, `filled to ${before.toFixed(2)}`);
-  p.update(rects, [], 0.3);
-  assert.ok(p.progress(0) > before - 0.15 && p.progress(0) < before, 'drains, but slowly');
-  const { chosen, t } = run(p, 5, () => [centre(rects[1])]);
-  assert.equal(chosen, 1);
-  assert.ok(t > 1.4, `the new card needs its own full hold (${t.toFixed(2)}s)`);
+test('scrolling restarts the ring, so a game that only just slid into the middle is not played by accident', () => {
+  const c = new Carousel({ n: 12 });
+  run(c, 1, () => [kid(1, DOWN_L, DOWN_R)]);
+  run(c, 0.7, () => [kid(1, UP_L, UP_R, true)], 1);
+  assert.ok(c.progress > 0.5);
+  c.step(1);
+  assert.equal(c.progress, 0);
 });
 
-test('two kids on two cards: the first ring to fill wins', () => {
-  const p = new Picker();
-  const { chosen } = run(p, 5, (t) => (t < 1.4 ? [centre(rects[2])] : [centre(rects[2]), centre(rects[7])]));
-  assert.equal(chosen, 2);
+test('any playing kid can scroll or play; two kids waving opposite ways on the same frame cancel out', () => {
+  const c = new Carousel({ n: 12 });
+  const a = (t) => kid(1, DOWN_L, t < 0.5 ? OUT_R : DOWN_R);
+  const b = (t) => ({ ...kid(2, t < 0.5 ? OUT_L : DOWN_L, DOWN_R), id: 2 });
+  const { steps } = run(c, 1, (t) => [a(t), b(t)]);
+  assert.equal(c.index, 0, `net nothing (${steps})`);
+  run(c, 1, () => [kid(1, DOWN_L, DOWN_R), { ...kid(2, DOWN_L, DOWN_R), id: 2 }]);
+  assert.equal(run(c, 2, () => [kid(1, DOWN_L, DOWN_R), { ...kid(2, UP_L, UP_R, true), id: 2 }]).chosen, 0);
 });
 
-test('a hand moving onto a card is reported once (for the sound and wiggle)', () => {
-  const p = new Picker();
-  assert.deepEqual(p.update(rects, [centre(rects[4])], 0.03).entered, [4]);
-  assert.deepEqual(p.update(rects, [centre(rects[4])], 0.03).entered, []);
-  p.update(rects, [], 0.03);
-  assert.deepEqual(p.update(rects, [centre(rects[4])], 0.03).entered, [4]);
+test('layout: the middle card is the biggest, at the top centre, with smaller neighbours either side, all on screen', () => {
+  for (const [W, H] of [[1920, 1080], [1280, 720], [1080, 1920]]) {
+    const cards = carouselLayout(12, 3, W, H);
+    const mid = cards.find((c) => c.off === 0);
+    assert.equal(mid.i, 3);
+    assert.equal(cards.at(-1), mid, 'drawn last, on top');
+    assert.ok(Math.abs(mid.rect.x + mid.rect.w / 2 - W / 2) < 1, 'centred');
+    assert.ok(mid.rect.y + mid.rect.h < H * 0.7, 'in the top part of the screen');
+    const prev = cards.find((c) => c.off === -1);
+    const next = cards.find((c) => c.off === 1);
+    assert.equal(prev.i, 2);
+    assert.equal(next.i, 4);
+    assert.ok(prev.rect.x + prev.rect.w / 2 < W / 2 && next.rect.x + next.rect.w / 2 > W / 2);
+    assert.ok(next.rect.w < mid.rect.w * 0.7);
+    for (const c of [prev, mid, next]) assert.ok(c.rect.x >= 0 && c.rect.x + c.rect.w <= W, `card ${c.i} on screen at ${W}x${H}`);
+  }
+  // wraps: card 0 in the middle has the last card on its left
+  assert.equal(carouselLayout(12, 0, 1920, 1080).find((c) => c.off === -1).i, 11);
+  // a short list never shows the same card twice
+  const two = carouselLayout(3, 0, 1920, 1080).map((c) => c.i);
+  assert.equal(new Set(two).size, two.length);
 });
 
-test('only raised hands choose: hands hanging at the sides do not count', () => {
-  const kid = (handY) => ({ sh: { x: 500, y: 400 }, shoulderW: 100, hands: [{ x: 450, y: handY }, { x: 550, y: handY }, { x: 450, y: handY + 10 }, { x: 550, y: handY + 10 }] });
-  assert.equal(pickingHands([kid(600)]).length, 0, 'hands down by the hips');
-  assert.equal(pickingHands([kid(300)]).length, 4, 'hands up');
-  assert.equal(pickingHands([kid(420)]).length, 4, 'hands at shoulder height (a little slack)');
-  assert.equal(pickingHands([kid(300)]).filter((h) => h.tip).length, 2, 'one fingertip per hand is drawn');
+test('tapping: the middle card wins where cards overlap; empty space is nothing', () => {
+  const cards = carouselLayout(12, 0, 1920, 1080);
+  const mid = cards.find((c) => c.off === 0).rect;
+  assert.equal(carouselCardAt(cards, { x: mid.x + 5, y: mid.y + mid.h / 2 }).i, 0);
+  const next = cards.find((c) => c.off === 1).rect;
+  assert.equal(carouselCardAt(cards, { x: next.x + next.w / 2, y: next.y + next.h / 2 }).i, 1);
+  assert.equal(carouselCardAt(cards, { x: 960, y: 1070 }), null);
 });
 
 test('Surprise never picks the level just played, and can pick every other one', () => {
@@ -110,5 +180,4 @@ test('Surprise never picks the level just played, and can pick every other one',
     assert.equal(seen.size, n - 1);
   }
   assert.equal(surprisePick(1, 0), 0);
-  for (let k = 0; k < 50; k++) assert.ok(surprisePick(n, -1) < n);
 });

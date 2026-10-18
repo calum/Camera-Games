@@ -33,7 +33,7 @@ an outro, then back to the level picker. Each frame it calls your level's `updat
 cartoon backdrop and the kids' cut-out are drawn **before** your level; the skeletons, scores and HUD
 **after** it.
 
-The cards in the level picker follow the list in [`src/levels/index.js`](../src/levels/index.js), and keys `1`
+The cards in the level picker carousel follow the list in [`src/levels/index.js`](../src/levels/index.js), and keys `1`
 to `9` play a level by its position in that list. Give your level an `icon` (one emoji): it is the big picture
 on its card.
 
