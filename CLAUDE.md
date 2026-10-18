@@ -78,9 +78,13 @@ Key ideas to preserve:
 - **Everything in view appears in the cut-out**, including kids who sat out. `excluded` only means no scoring or hits.
 - **Who is who lives in `people.js`, not in levels.** A new body is on probation (~0.45 s, 3 tracked frames,
   upright) before it becomes a player, so pets and ghosts never join. During a game a new player (`isNew`) is
-  excluded until they hold airplane for 2 s (`lateJoin`). Lost players are remembered for 20 s and recalled by
-  position or look. Probation and dropout windows stretch on slow tracking (`slowFrames`), so a slow device
-  never makes kids flicker.
+  excluded until they hold airplane for 2 s (`lateJoin`). Bodies are matched to players by where their shoulders
+  are, sideways AND up-and-down (in shoulder widths), best pairs first: matching sideways only swapped a kid with
+  a grown-up lying on the sofa under them whenever the model found just one of the two. A body half out of the
+  picture has no trustworthy height or size, so it is matched sideways only and never starts probation. Lost
+  players are remembered for 20 s and recalled by position or by a distinctive look (two dark outfits in a dim
+  room are not "the same look"). Probation and dropout windows stretch on slow tracking (`slowFrames`), so a
+  slow device never makes kids flicker. `test/fixtures/recordings/` holds real clips that replay through this.
 - **Tracking never blocks drawing.** The model runs in `pose-worker.js`; `PoseTracker.update` sends a frame when
   the last one is answered and applies whatever arrived. `?worker=off`, or a worker that fails to start, uses
   `MainThreadEngine` (same answer shape). The cut-out is redone per camera frame or tracked frame, not per
