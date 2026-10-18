@@ -51,6 +51,7 @@ src/art.js         loads optional PNG overrides from assets/ (falls back to emoj
 src/draw.js        text, skeleton, hearts, pose icon helpers
 src/audio.js       synthesized sound effects (tones + filtered noise, no files), a few per level
 src/ease.js        pure: auto-ease. Misses (g.miss()) and dry spells lower g.diff; a good spell restores it
+src/health.js      pure: self-healing watchdog. Spots a lost camera or a hung tracker; tab sleep is not a fault
 ```
 
 Key ideas to preserve:
@@ -79,6 +80,11 @@ Key ideas to preserve:
 - **Every URL is relative to the module** (`new URL('../vendor/...', import.meta.url)`) so the game runs from a
   sub-folder on GitHub Pages. A unit test fails on absolute `'/src/'`-style paths in `src/`.
 - **Camera operations are serialized.** `PoseTracker.startCamera`, `nextCamera` and the slow-camera fallback all go through `_queue`, so two can never fight over the camera. `switchCamera` in `main.js` also ignores key presses while a switch is under way. Switching never leaves the game without a picture: it retries transient errors (`withRetry`), falls back to the default camera, and restores the previous one if the switch fails.
+- **The game heals itself.** `PoseTracker._heal` (verdicts from `health.js`) reconnects a camera whose track ended or
+  whose picture froze for 3 s, and restarts a tracker that stopped answering (a second hang moves it to the main
+  thread). It retries with backoff, `tracker.reconnecting` says what it is fixing, and `main.js` pauses the game
+  under a "Reconnecting..." screen meanwhile. Checks are skipped while a camera operation is under way, and a gap
+  between frames (a sleeping tab) restarts the clocks. Recovery logs use `console.warn`, never `console.error`.
 - The frame-rate fallback measures the camera's real delivery rate from `requestVideoFrameCallback`'s `presentedFrames`, not callback counts, so a slow laptop is never mistaken for a slow camera. `?cam=` pins the picture size.
 - Tracking quality is a ladder (`QUALITY` in `tracker.js`: full model, lite, lite at half size, lite without
   masks). Laptops start at the top, phones one rung down (`device.js`); it steps down when tracking averages
