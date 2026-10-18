@@ -16,9 +16,11 @@ Built for a family living room: one laptop, one cheap webcam, two or three kids 
 | **Jump the waves** (beach) | Count down 3-2-1 and jump as the wave rolls past. A green glow and "NICE JUMP!" for a good one, a red "SPLASH!" if you miss. |
 | **Dance party** (disco) | Copy the stick-figure pose on screen (arms up, airplane, hands on head) and hold it. |
 
-After joining, the kids choose what to play on the **level picker**: a big picture card per level (plus a
-**Surprise!** card). A kid holds a hand up over a card until the ring around it fills. After each level the
-picker comes back, so they choose again (the same level is one card away).
+After joining, the kids choose what to play on the **level picker**, a carousel of big picture cards: the
+current game in the middle, the previous and next ones either side (plus a **Surprise!** card). Waving a hand
+out to the right shows the next game, to the left the previous one, and **both arms straight up** for about a
+second plays the game in the middle. After each level the picker comes back with that game in the middle, so
+"again!" is just arms up.
 
 ## Quick start
 
@@ -68,7 +70,8 @@ are wearing, and carries on with their own colour and score.
 
 | Key | Does |
 |---|---|
-| Space / Enter | Start with everyone (on to the level picker); in the picker, play a surprise level |
+| Space / Enter | Start with everyone (on to the level picker); in the picker, play the game in the middle |
+| ← / → | In the picker, show the previous / next game |
 | F | Fullscreen |
 | 1 - 9 | Play that level (by its place in the list) |
 | N | Next level |
@@ -80,7 +83,7 @@ are wearing, and carries on with their own colour and score.
 | M | Switch between camera and mouse mode |
 
 **On a tablet or phone** (or any time), tap the screen: buttons for **▶ Start**, **⏭ Next level**,
-**⏏ Menu**, **📷 Camera** and **⛶ Full screen** appear for a few seconds. In the level picker a grown-up can also tap a card. When the game isn't full screen, the
+**⏏ Menu**, **📷 Camera** and **⛶ Full screen** appear for a few seconds. In the level picker a grown-up can also tap a side card to scroll to it, and the middle card to play it. When the game isn't full screen, the
 menu shows a small "Full screen works best" note with a button (on iPhone it suggests Add to Home Screen,
 since web pages can't go full screen there). The screen is kept awake while the game is open.
 
