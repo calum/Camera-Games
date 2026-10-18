@@ -47,3 +47,17 @@ export class Lobby {
     return this.joined.includes(id);
   }
 }
+
+// Joining once a game is under way. Someone who walks into view mid-game (a parent doing chores, a
+// sibling, a visitor) only WATCHES: they are in the picture but can't score or get hit. To join, they hold
+// their arms out like an airplane for `hold` seconds, the same move as in the lobby. The hold drains
+// (rather than resets) on a glitchy frame, so tracking noise can't stop a kid joining.
+//   p:  a player with p.excluded true and p.pose.airplane; dt: seconds. Returns true the moment they join.
+export function lateJoin(p, dt, hold = 2) {
+  if (!p.excluded) return false;
+  p.joinHold = p.pose?.airplane ? (p.joinHold ?? 0) + dt : Math.max(0, (p.joinHold ?? 0) - dt * 2);
+  if (p.joinHold < hold) return false;
+  p.joinHold = 0;
+  p.excluded = false;
+  return true;
+}

@@ -19,12 +19,18 @@ const DEFS = {
 
 const imgs = {};
 
+// A level can bring its own art slots (level.art = { name: { file, emoji } }); main.js registers them
+// before loadArt(). Existing names are left alone, so a level can't break another level's art.
+export function registerArt(defs) {
+  for (const [name, def] of Object.entries(defs)) DEFS[name] ??= { ...def };
+}
+
 export function loadArt() {
   for (const [name, def] of Object.entries(DEFS)) {
     const img = new Image();
     img.onload = () => (def.ok = true);
     img.onerror = () => (def.ok = false);
-    img.src = `/assets/${def.file}`;
+    img.src = new URL(`../assets/${def.file}`, import.meta.url).href; // relative: works under any site path (GitHub Pages)
     imgs[name] = img;
   }
 }

@@ -1,7 +1,7 @@
 // Unit tests for the level rules, driven with a fake game object and fake players (no browser).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { LEVELS } from '../../src/levels.js';
+import { LEVELS } from '../../src/levels/index.js';
 
 const [bubbles, dodge, jump, dance] = LEVELS;
 const byId = (id) => LEVELS.find((l) => l.id === id);

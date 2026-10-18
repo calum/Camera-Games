@@ -163,6 +163,7 @@ const bubbles = {
       ctx.stroke();
     }
     // fish
+    /** @type {[number, number, number, string, number][]} */
     const fish = [[0.22, 120, 0.9, '#ffb347', 1], [0.4, 80, 1.2, '#ff6b8b', -1], [0.58, 140, 0.8, '#ffe14d', 1], [0.74, 100, 1.0, '#7ee8fa', -1], [0.32, 60, 1.4, '#c77dff', 1]];
     fish.forEach(([yy, sp, s, c, dir], i) => {
       const x = dir > 0 ? drift(t, i * 400, sp * u, W, 200) : W - drift(t, i * 400, sp * u, W, 200);
@@ -523,10 +524,12 @@ export class Backdrops {
     this.key = '';
   }
 
-  // Draws the scene `id` filling the whole canvas. `t` is the clock in seconds.
-  draw(ctx, id, W, H, t) {
+  // Draws the scene `id` filling the whole canvas. `t` is the clock in seconds. `custom` is a level's own
+  // scene (level.backdrop as { static, dynamic }); a level can also name an existing scene instead.
+  /** @param {CanvasRenderingContext2D} ctx @param {string} id @param {number} W @param {number} H @param {number} t @param {import('./types.js').Scene} [custom] */
+  draw(ctx, id, W, H, t, custom) {
     if (drawCover(ctx, `bg_${id}`, W, H)) return; // your own art wins
-    const scene = SCENES[id] ?? SCENES.menu;
+    const scene = custom ?? SCENES[id] ?? SCENES.menu;
     const key = `${id}:${W}x${H}`;
     if (key !== this.key) {
       this.cache.width = W;

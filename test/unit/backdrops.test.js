@@ -36,7 +36,7 @@ const { Backdrops, SCENES } = await import('../../src/backdrops.js');
 const IDS = ['menu', 'bubbles', 'dodge', 'jump', 'dance', 'finale'];
 
 test('there is a scene for the menu, the finale and each of the four levels', async () => {
-  const { LEVELS } = await import('../../src/levels.js');
+  const { LEVELS } = await import('../../src/levels/index.js');
   assert.deepEqual(Object.keys(SCENES).sort(), [...IDS].sort());
   for (const level of LEVELS) assert.ok(SCENES[level.id], `level "${level.id}" has a backdrop`);
 });
