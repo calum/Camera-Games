@@ -3,6 +3,8 @@
 //   - rolling boulders you jump over (judged like the wave in the jump level),
 //   - a giant boulder at the end: stand in the one safe gap (kind: never costs hearts).
 // Same level contract as src/levels.js: { id, title, hint, duration, start(g), update(g,dt), draw(g,ctx) }
+/** @import { Level } from '../types.js' */
+import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
 import { drawArt } from '../art.js';
 import { text } from '../draw.js';
@@ -51,8 +53,10 @@ export const inGap = (cx, gapX, gapW) => Math.abs(cx - gapX) <= gapW / 2;
 // Shadow growth 0..1 as a rock gets closer to the floor.
 export const shadowGrow = (y, H) => clamp((y + 120) / (H + 120), 0, 1);
 
+/** @satisfies {Level} */
 const avalanche = {
   id: 'avalanche',
+  backdrop: EXTRA_SCENES.avalanche,
   title: 'Avalanche!',
   hint: 'Dodge the rocks, jump the boulders, and hide in the gap at the end!',
   color: '#9ad0ff',

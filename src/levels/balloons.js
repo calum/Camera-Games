@@ -2,6 +2,8 @@
 // don't let any touch the floor. A new balloon joins every so often. Same level contract as
 // src/levels.js: { id, title, hint, duration, start(g), update(g,dt), draw(g,ctx) }
 // A balloon that lands just pops and comes back later: nobody loses, the "in the air" timer resets.
+/** @import { Level } from '../types.js' */
+import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
 import { text } from '../draw.js';
 
@@ -34,8 +36,10 @@ export function tap(b, hx, hvx, u) {
   return { vx: off * SIDEWAYS * u + hvx * HAND_PUSH, vy: -BOUNCE * u };
 }
 
+/** @satisfies {Level} */
 const balloons = {
   id: 'balloons',
+  backdrop: EXTRA_SCENES.balloons,
   title: 'Keep it up!',
   hint: "Tap the balloons up with your hands. Don't let them touch the floor!",
   color: '#ff5a7a',

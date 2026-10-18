@@ -1,8 +1,7 @@
-// Cartoon backdrops for the new levels, in the same { static, dynamic } format as src/backdrops.js
-// (static is drawn once and cached, dynamic every frame from the clock `t`). They live in their own
-// file until the new levels are registered; then `Object.assign(SCENES, EXTRA_SCENES)` (or moving
-// them into backdrops.js) makes `Backdrops.draw` use them. The small helpers below are copies of the
-// ones in backdrops.js, so this file can be dropped in without touching that one.
+// Cartoon backdrops for the newer levels (dig, avalanche, wall, meteor, balloons), in the same
+// { static, dynamic } Scene format as src/backdrops.js: static is drawn once and cached, dynamic every
+// frame from the clock `t`. Each level passes its scene as `backdrop: EXTRA_SCENES.<id>`.
+// The small helpers below are copies of the ones in backdrops.js.
 
 function rng(seed) {
   return () => {
@@ -243,7 +242,7 @@ const wall = {
       ctx.fill();
     }
     // two soft spotlights sweeping the stage
-    for (const [fx, ph, col] of [[0.25, 0, 'rgba(255,240,180,0.13)'], [0.75, 2, 'rgba(180,220,255,0.13)']]) {
+    for (const { fx, ph, col } of [{ fx: 0.25, ph: 0, col: 'rgba(255,240,180,0.13)' }, { fx: 0.75, ph: 2, col: 'rgba(180,220,255,0.13)' }]) {
       const x = W * fx;
       const aim = W / 2 + Math.sin(t * 0.7 + ph) * W * 0.3;
       ctx.fillStyle = col;

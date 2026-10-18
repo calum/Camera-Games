@@ -11,6 +11,8 @@
 // The kids stay where the camera sees them, so instead of moving the kids we scroll each
 // column of bricks so that the brick under a kid's feet sits at floor level. Columns without
 // a kid follow their nearest neighbour, so the mine reads as one picture.
+/** @import { Level } from '../types.js' */
+import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
 import { text } from '../draw.js';
 
@@ -105,8 +107,10 @@ export function pickColumn(x, W, prev) {
   return x >= left && x < right ? prev : raw;
 }
 
+/** @satisfies {Level} */
 const dig = {
   id: 'dig',
+  backdrop: EXTRA_SCENES.dig,
   title: 'Dig down!',
   hint: 'Jump to stomp the bricks. Metal won\'t break, so go round. TNT goes BANG!',
   color: '#c98a4b',

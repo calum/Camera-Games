@@ -57,17 +57,14 @@ test('every new backdrop draws a lot of shapes, at several sizes and moments, wi
   }
 });
 
-test('once registered, Backdrops.draw uses them', () => {
-  const saved = { ...SCENES };
-  try {
-    Object.assign(SCENES, EXTRA_SCENES);
-    for (const id of Object.keys(EXTRA_SCENES)) {
-      const b = new Backdrops();
-      b.draw(fakeCtx(), id, 1280, 720, 1);
-      assert.ok(b.key.startsWith(`${id}:`), id);
-    }
-  } finally {
-    for (const id of Object.keys(EXTRA_SCENES)) delete SCENES[id];
-    Object.assign(SCENES, saved);
+test('each new level uses its own backdrop, and Backdrops.draw paints it', async () => {
+  const { LEVELS } = await import('../../src/levels/index.js');
+  for (const [id, scene] of Object.entries(EXTRA_SCENES)) {
+    const level = LEVELS.find((l) => l.id === id);
+    assert.ok(level, `level "${id}" is in the game`);
+    assert.equal(level.backdrop, scene, id);
+    const b = new Backdrops();
+    b.draw(fakeCtx(), id, 1280, 720, 1, scene);
+    assert.ok(b.cctx.calls.n > 20, `${id} static layer drawn`);
   }
 });

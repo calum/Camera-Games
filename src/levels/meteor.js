@@ -2,6 +2,8 @@
 //   { id, title, hint, duration, start(g), update(g,dt), draw(g,ctx) }
 // Stars drift down and are caught with a hand (like bubbles). Meteors get a "!" warning
 // column and then fall like rocks in Dodge: only the body can be hit, hands are ignored.
+/** @import { Level } from '../types.js' */
+import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
 import { text } from '../draw.js';
 
@@ -52,8 +54,10 @@ export function starPath(ctx, x, y, r, rot = 0) {
   ctx.closePath();
 }
 
+/** @satisfies {Level} */
 const meteor = {
   id: 'meteor',
+  backdrop: EXTRA_SCENES.meteor,
   title: 'Catch the stars!',
   hint: 'Touch the stars with your hands. Gold ones are worth 3! Dodge the meteors when you see the !',
   color: '#ffd24d',

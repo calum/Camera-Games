@@ -35,10 +35,13 @@ globalThis.document = {
 const { Backdrops, SCENES } = await import('../../src/backdrops.js');
 const IDS = ['menu', 'bubbles', 'dodge', 'jump', 'dance', 'finale'];
 
-test('there is a scene for the menu, the finale and each of the four levels', async () => {
+test('there is a scene for the menu, the finale and every level (built in, or the level\'s own)', async () => {
   const { LEVELS } = await import('../../src/levels/index.js');
   assert.deepEqual(Object.keys(SCENES).sort(), [...IDS].sort());
-  for (const level of LEVELS) assert.ok(SCENES[level.id], `level "${level.id}" has a backdrop`);
+  for (const level of LEVELS) {
+    const own = typeof level.backdrop === 'object' && level.backdrop;
+    assert.ok(own || SCENES[level.backdrop ?? level.id], `level "${level.id}" has a backdrop`);
+  }
 });
 
 test('every scene draws a lot of shapes, at several sizes and moments, without throwing', () => {

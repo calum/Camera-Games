@@ -3,6 +3,8 @@
 // handsHead) but with something coming at you. Same level contract as src/levels.js:
 //   { id, title, hint, duration, start(g), update(g,dt), draw(g,ctx) }
 // Nothing here can fail the level: a miss is a silly BONK, never a lost heart.
+/** @import { Level } from '../types.js' */
+import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
 import { text, drawPoseIcon } from '../draw.js';
 
@@ -42,8 +44,10 @@ export const isSafe = (poseNow, heldInWindow) => !!poseNow || heldInWindow >= JU
 // Accelerating, so it feels like it is rushing at you.
 export const wallScale = (prog) => START_SCALE + (1 - START_SCALE) * Math.min(1, Math.max(0, prog)) ** 2;
 
+/** @satisfies {Level} */
 const wall = {
   id: 'wall',
+  backdrop: EXTRA_SCENES.wall,
   title: 'Hole in the wall!',
   hint: 'Copy the pose in the hole before the wall hits you!',
   color: '#ff9ad5',
