@@ -6,6 +6,7 @@ import { text, drawSkeleton, drawHeart } from './draw.js';
 import { Lobby } from './lobby.js';
 import { Cutout } from './cutout.js';
 import { Backdrops } from './backdrops.js';
+import { loadSavedCamera } from './camera.js';
 
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
@@ -31,6 +32,7 @@ const g = {
   level: null,
   levelEnd: null,
   notice: '',
+  toast: null, // a short message in the middle of the screen: { text, until }
 
   // Everyone who is visible AND playing (kids who sat out the lobby are excluded).
   activePlayers() {
@@ -140,12 +142,14 @@ async function boot() {
     return;
   }
   try {
-    pose = new PoseTracker({ model: params.get('model') }); // ?model=lite|full to force a model
+    // ?model=lite|full forces a pose model; ?cam=wide|standard forces the picture size
+    pose = new PoseTracker({ model: params.get('model'), cameraMode: params.get('cam') });
     status = 'Waking up the pose detector...';
     await pose.init();
     status = 'Starting the camera... (click Allow)';
-    await pose.startCamera();
+    await pose.startCamera({ deviceId: loadSavedCamera(globalThis.localStorage) }); // remembers the camera picked with C
     tracker = pose;
+    if (pose.cameraCount > 1) toast(`Camera: ${pose.cameraLabel}  (${pose.cameraCount} found, press C to switch)`, 5);
     resize();
     setState('menu');
   } catch (e) {
@@ -153,6 +157,25 @@ async function boot() {
     g.notice = `No camera (${e.message || e}). Using the mouse instead.`;
     useMouse();
     setState('menu');
+  }
+}
+
+function toast(text, secs = 3.5) {
+  g.toast = { text, until: g.now + secs };
+}
+
+let switchingCamera = false;
+async function switchCamera() {
+  if (switchingCamera) return; // a switch is already under way: pressing C again must not start a second one
+  switchingCamera = true;
+  try {
+    const cam = await pose.nextCamera();
+    toast(cam ? `Camera ${cam.index} of ${cam.count}: ${cam.label}` : 'Only one camera found (a phone webcam app has to be running first)', 4);
+  } catch (e) {
+    console.error(e);
+    toast(`Could not switch camera: ${e.message || e}`, 5);
+  } finally {
+    switchingCamera = false;
   }
 }
 
@@ -176,6 +199,7 @@ window.addEventListener('keydown', (e) => {
   } else if (k === 'escape') toMenu();
   else if (k === 'f') document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.();
   else if (k === 'd') g.debug = !g.debug;
+  else if (k === 'c' && pose && tracker === pose) switchCamera();
   else if (k === 'b') g.view = g.view === 'cutout' ? 'camera' : 'cutout';
   else if (k === 'k') g.skeleton = { thin: 'bold', bold: 'off', off: 'thin' }[g.skeleton];
   else if (k === 'm' && state !== 'loading') {
@@ -361,6 +385,7 @@ function render() {
     }
     drawPlayerCount();
     text(ctx, 'grown-ups: SPACE starts with everyone', g.W - 30 * u, g.H - 30 * u, 24 * u, { align: 'right' });
+    if (pose && tracker === pose && pose.isPortrait) text(ctx, 'The camera picture is upright (portrait). Turn the phone sideways for a much wider view.', g.W / 2, g.H * 0.26, 28 * u, { color: '#ffe14d' });
     if (g.notice) text(ctx, g.notice, g.W / 2, g.H * 0.26, 28 * u, { color: '#ffb3b3' });
     if (tracker === mouse) text(ctx, 'Mouse mode: move = body & hands, click = jump, Q/W/E = poses', g.W / 2, g.H * 0.8, 28 * u);
   } else if (state === 'intro') {
@@ -389,6 +414,14 @@ function render() {
     text(ctx, 'Next round is a bit harder...', g.W / 2, g.H * 0.92, 44 * u);
   }
 
+  if (g.toast && g.now < g.toast.until) {
+    ctx.font = `800 ${36 * u}px "Trebuchet MS", system-ui, sans-serif`;
+    const w = ctx.measureText(g.toast.text).width + 60 * u;
+    ctx.fillStyle = 'rgba(8,12,30,0.75)';
+    ctx.fillRect((g.W - w) / 2, 80 * u, w, 64 * u);
+    text(ctx, g.toast.text, g.W / 2, 112 * u, 36 * u);
+  }
+
   if (g.debug) {
     const fps = dtSmooth > 0 ? Math.round(1 / dtSmooth) : 0;
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
@@ -396,7 +429,8 @@ function render() {
     const line = (s, y) => text(ctx, s, 20, y, 22, { align: 'left', stroke: 'transparent', weight: 600 });
     line(`fps ${fps}   detect ${tracker?.detectMs?.toFixed?.(1)} ms (${tracker?.delegate}, ${tracker?.modelName ?? '-'})`, g.H - 90);
     line(`players ${g.activePlayers().length}   state ${state}   diff ${g.diff.toFixed(2)}`, g.H - 62);
-    line(`keys: D debug  B cut-out/camera  K skeleton  F fullscreen  M mouse  N next  1-4 level  Esc menu`, g.H - 34);
+    if (pose && tracker === pose) text(ctx, `camera ${pose.cameraLabel} ${pose.video.videoWidth}x${pose.video.videoHeight} (${pose.mode}, ${pose.cameraFps ? pose.cameraFps.toFixed(0) + ' fps' : 'measuring'})`, 440, g.H - 62, 22 * u, { align: 'left', stroke: 'rgba(0,0,0,0.8)', weight: 600 });
+    line(`keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  1-4 level  Esc menu`, g.H - 34);
     if (g.view === 'cutout' && cutoutReady) {
       const s = cutout.stats;
       text(ctx, `cut-out ${(s.coverage * 100).toFixed(0)}% of screen   pose mask ${s.poseActive ? 'ON' : 'LOST (using motion)'}   motion ${(s.motionFrac * 100).toFixed(0)}%`, 440, g.H - 90, 22 * u, { align: 'left', stroke: 'rgba(0,0,0,0.8)', weight: 600 });

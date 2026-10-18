@@ -28,6 +28,7 @@ or screens. No camera is needed for either: the e2e tests feed a photo through a
 ```
 src/main.js        game loop, state machine (loading > menu > intro > play > outro > ... > finale), HUD, keys
 src/tracker.js     PoseTracker (camera + MediaPipe) and MouseTracker; computeFeatures() turns a skeleton into a "player"
+src/camera.js      pure camera logic: constraints (16:9 720p wish), next-camera choice, saved camera, FpsGuard, withRetry
 src/filter.js      One Euro filter for skeleton smoothing
 src/lobby.js       join-by-arms-out: arms out for 3 s starts the game with exactly those kids
 src/levels.js      the four levels; each is { id, title, hint, duration, start(g), update(g,dt), draw(g,ctx) }
@@ -51,6 +52,8 @@ Key ideas to preserve:
 - **Nothing pops.** Poses use hysteresis; a kid stays present through 0.6 s tracking dropouts; the cut-out fades
   over ~0.25-0.9 s and is kept alive by motion near where a kid was. Don't add instant on/off switches to tracking.
 - **Everything in view appears in the cut-out**, including kids who sat out. `excluded` only means no scoring or hits.
+- **Camera operations are serialized.** `PoseTracker.startCamera`, `nextCamera` and the slow-camera fallback all go through `_queue`, so two can never fight over the camera. `switchCamera` in `main.js` also ignores key presses while a switch is under way. Switching never leaves the game without a picture: it retries transient errors (`withRetry`), falls back to the default camera, and restores the previous one if the switch fails.
+- The frame-rate fallback measures the camera's real delivery rate from `requestVideoFrameCallback`'s `presentedFrames`, not callback counts, so a slow laptop is never mistaken for a slow camera. `?cam=` pins the picture size.
 - The model starts as `full` and auto-drops to `lite` on slow machines (`SLOW_MS` in `tracker.js`); `?model=` pins it.
 - The mask fusion in `person-mask.js` is tuned by `DEFAULTS` at the top of that file. Level difficulty constants
   (rock speed, wave timing, hold times) are at the top of `levels.js`.
@@ -72,7 +75,8 @@ Key ideas to preserve:
    `?model=full` in e2e tests so the auto-downgrade can't swap the model mid-test.
 5. **Port 8137, not 8000**: another program on the dev machine already used 8000. The server binds to localhost
    only; browsers allow the camera on `http://localhost` without HTTPS. Don't kill servers you didn't start.
-6. A sloppy hit-test is a feature: kids are small, tracking is noisy, so windows and hit boxes are deliberately
+6. **The test browser's fake cameras are quirky.** With `--use-file-for-fake-video-capture` (the photo-as-webcam feed) the browser reports only ONE camera, and with `--use-fake-device-for-media-stream=device-count=3` it sometimes lists no cameras at startup. Camera-switching tests therefore use `openWithCameras` (restarts the browser until it lists all cameras) and the built-in test cameras; the photo feed is for tracking tests. Functions passed to `openGame({ init })` must be self-contained (only their own source reaches the page).
+7. A sloppy hit-test is a feature: kids are small, tracking is noisy, so windows and hit boxes are deliberately
    forgiving (jump window 0.5 s early to 0.3 s late; rocks use `c.r * 0.8`).
 
 ## Conventions

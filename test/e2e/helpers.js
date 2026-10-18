@@ -81,15 +81,23 @@ export function launch(executablePath, extraArgs = []) {
   return puppeteer.launch({
     executablePath,
     headless: 'new',
-    args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', ...extraArgs],
+    args: [
+      '--use-fake-ui-for-media-stream',
+      // the plain flag, unless the test supplies its own form of it (e.g. =device-count=3)
+      ...(extraArgs.some((a) => a.startsWith('--use-fake-device-for-media-stream')) ? [] : ['--use-fake-device-for-media-stream']),
+      ...extraArgs,
+    ],
     defaultViewport: { width: 1280, height: 720 },
   });
 }
 
 // Opens the game and records anything that would be a bug (uncaught errors, console errors).
 // 404s are ignored: the optional custom-art PNGs are expected to be missing.
-export async function openGame(browser, url) {
+// `init` (optional) is a function, or a list of functions, that run inside the page before any game code,
+// e.g. to spy on the camera. Each must be self-contained: only its own source is sent to the page.
+export async function openGame(browser, url, { init } = {}) {
   const page = await browser.newPage();
+  for (const fn of [init].flat().filter(Boolean)) await page.evaluateOnNewDocument(fn);
   const problems = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));
   page.on('console', (m) => {
@@ -102,3 +110,18 @@ export async function openGame(browser, url) {
 export const gameState = (page) => page.evaluate(() => window.__game.state);
 export const waitForState = (page, state, timeout = 30000) =>
   page.waitForFunction((s) => window.__game?.state === s, { timeout }, state);
+
+// Starts a test browser with `count` built-in fake cameras and opens the game on it. The test browser's fake
+// camera list is occasionally empty at startup (it then reports no cameras at all, whatever the game does), so
+// we start a fresh browser until it really lists them all, rather than weakening what the test checks.
+export async function openWithCameras(exe, url, { count = 3, init, tries = 8 } = {}) {
+  for (let i = 0; i < tries; i++) {
+    const browser = await launch(exe, [`--use-fake-device-for-media-stream=device-count=${count}`]);
+    const { page, problems } = await openGame(browser, url, { init });
+    await waitForState(page, 'menu', 60000);
+    const listed = await page.evaluate(async () => (await navigator.mediaDevices.enumerateDevices()).filter((d) => d.kind === 'videoinput').length);
+    if (listed >= count) return { browser, page, problems };
+    await browser.close();
+  }
+  throw new Error(`the test browser never listed ${count} fake cameras`);
+}

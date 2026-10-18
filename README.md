@@ -49,6 +49,7 @@ or drops out, the 3 seconds start again. A grown-up can press **Space** to start
 | 1 - 4 | Jump to a level |
 | N | Next level |
 | Esc | Back to the menu (everyone can join again) |
+| C | Switch to the next camera (a phone webcam app shows up as an extra camera); the choice is remembered |
 | B | Show just the kids in a cartoon world (default), or the whole camera picture |
 | K | Skeleton overlay: thin line (default), bold, or off |
 | D | Debug info: frame rate, tracking time, model, what pose each kid is doing |
@@ -58,7 +59,13 @@ or drops out, the 3 seconds start again. A grown-up can press **Space** to start
 click = jump, hold Q / W / E = arms up / airplane / hands on head.
 
 URL options: `?mouse`, `?debug`, `?lite` (turn off glow effects on a slow machine), `?model=lite` or
-`?model=full`, `?view=camera`.
+`?model=full`, `?view=camera`, `?cam=wide` or `?cam=standard` (picture size, see below).
+
+### Camera and field of view
+
+The game asks the camera for a 16:9 picture (1280x720). Many webcams crop the sides when asked for 640x480, so this gives a webcam its full field of view, and it barely costs anything (the pose model takes roughly 34 ms at 640x480 and 37 ms at 1280x720 in the test browser). If a cheap webcam cannot deliver at least ~15 frames a second at 720p, the game quietly drops to 640x480 by itself. `?cam=standard` or `?cam=wide` forces one.
+
+**Using a phone as the camera:** run a phone-as-webcam app (Windows 11 can do this with an Android phone through Link to Windows; Camo, Iriun and DroidCam are other options). The phone then appears as an extra camera: press **C** to switch to it. The game remembers your choice. Phones have an ultra-wide lens, so pick that lens in the app for a much wider view, and keep the phone **landscape** (the menu warns you if the picture is upright). A USB connection adds less delay than Wi-Fi, and Game mode on the TV helps too.
 
 ## If something is off
 
@@ -68,6 +75,7 @@ URL options: `?mouse`, `?debug`, `?lite` (turn off glow effects on a slow machin
 - **It runs slowly:** press **D** for the frame rate. Try `?lite`, or `?model=lite`. The game already switches
   to the lighter pose model by itself if the laptop averages slower than 50 ms per frame.
 - **The cut-out looks wrong:** press **B** for the plain camera picture.
+- **The wrong camera is used:** press **C** to cycle through the cameras. **D** shows which one is active, its size and its real frame rate.
 - **Port already in use:** set another one, e.g. `PORT=9000 node server.mjs`.
 
 ## Your own art
@@ -97,6 +105,7 @@ index.html, server.mjs, start.bat       the page, a tiny dependency-free static 
 src/main.js                             game loop, screens, HUD, keys
 src/levels.js                           the four levels (start / update / draw each)
 src/tracker.js  filter.js  lobby.js     camera + pose -> players, smoothing, the join-by-arms-out lobby
+src/camera.js                           picture size, switching cameras, remembering the choice, frame-rate fallback
 src/person-mask.js  cutout.js           which pixels are a kid, and cutting them out
 src/backdrops.js  art.js  draw.js       cartoon worlds, art loading, drawing helpers
 src/audio.js                            synthesized sound effects (no audio files)
@@ -108,8 +117,8 @@ test/unit  test/e2e  test/fixtures      tests
 
 ```
 npm install          # one time; only installs the test tool (puppeteer-core)
-npm test             # 100 unit tests, a couple of seconds
-npm run test:e2e     # 16 browser tests, about 5 minutes: real Edge/Chrome and the real pose model
+npm test             # 135 unit tests, a couple of seconds
+npm run test:e2e     # 22 browser tests, about 7 minutes: real Edge/Chrome and the real pose model
 npm run test:all
 ```
 

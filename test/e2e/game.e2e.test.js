@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findBrowser, startServer, makeFakeWebcamFile, launch, openGame, waitForState, wait } from './helpers.js';
+import { findBrowser, startServer, makeFakeWebcamFile, launch, openGame, openWithCameras, waitForState, wait } from './helpers.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const photo = path.join(here, '..', 'fixtures', 'pose.jpg'); // man with arms straight out = "airplane"
@@ -354,6 +354,154 @@ test('BACKDROPS: every level has its own cartoon world and they all draw cleanly
         const d = sigs[ids[i]].reduce((s, p, k) => s + Math.hypot(p[0] - sigs[ids[j]][k][0], p[1] - sigs[ids[j]][k][1], p[2] - sigs[ids[j]][k][2]), 0) / 16;
         assert.ok(d > 25, `${ids[i]} and ${ids[j]} look different (distance ${d.toFixed(0)})`);
       }
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+// Runs inside the page before the game: records every camera request the game makes.
+const spyOnCamera = () => {
+  window.__gum = [];
+  const real = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+  navigator.mediaDevices.getUserMedia = (c) => {
+    window.__gum.push(JSON.parse(JSON.stringify(c)));
+    return real(c);
+  };
+};
+// ...and pretends the camera only delivers 8 frames a second (like a cheap webcam struggling at 720p).
+const slowCamera = () => {
+  HTMLVideoElement.prototype.requestVideoFrameCallback = function (cb) {
+    setTimeout(() => cb(performance.now()), 125);
+    return 1;
+  };
+};
+const camArgs = (extra = []) => [`--use-file-for-fake-video-capture=${webcamFile}`, ...extra];
+
+test('CAMERA: asks for 16:9 720p by default so the webcam uses its full field of view; ?cam=standard asks for 640x480', { skip }, async () => {
+  let browser = await launch(exe, camArgs());
+  try {
+    let { page, problems } = await openGame(browser, url + '?model=full', { init: spyOnCamera });
+    await waitForState(page, 'menu', 60000);
+    let gum = await page.evaluate(() => window.__gum);
+    assert.equal(gum.length, 1, 'one camera request');
+    assert.deepEqual([gum[0].video.width.ideal, gum[0].video.height.ideal, gum[0].video.frameRate.ideal], [1280, 720, 30]);
+    assert.equal(gum[0].video.facingMode, 'user');
+    assert.deepEqual(problems, []);
+
+    ({ page, problems } = await openGame(browser, url + '?model=full&cam=standard', { init: spyOnCamera }));
+    await waitForState(page, 'menu', 60000);
+    gum = await page.evaluate(() => window.__gum);
+    assert.deepEqual([gum[0].video.width.ideal, gum[0].video.height.ideal], [640, 480]);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('CAMERA: C switches between cameras, says which one on screen, and the choice is remembered', { skip }, async () => {
+  // three built-in test cameras (with the photo-as-webcam flag the browser only reports one camera)
+  const { browser, page, problems } = await openWithCameras(exe, url + '?model=full', { init: spyOnCamera });
+  try {
+    const first = await page.evaluate(() => ({ id: window.__game.tracker.deviceId }));
+    assert.ok(first.id, 'knows which camera it is using');
+
+    await page.keyboard.press('c');
+    await page.waitForFunction((id) => window.__game.tracker.deviceId !== id, { timeout: 15000 }, first.id);
+    // the message and the saved choice are written just after the switch completes
+    await page.waitForFunction(() => /Camera \d of \d/.test(window.__game.g.toast?.text ?? '') && localStorage.getItem('kcg.camera') === window.__game.tracker.deviceId, { timeout: 10000 });
+    const second = await page.evaluate(() => ({
+      id: window.__game.tracker.deviceId,
+      toast: window.__game.g.toast?.text,
+      saved: localStorage.getItem('kcg.camera'),
+    }));
+    assert.notEqual(second.id, first.id, 'a different camera');
+    assert.match(second.toast, /Camera \d of \d/);
+    assert.equal(second.saved, second.id, 'choice saved');
+    const gum = await page.evaluate(() => window.__gum);
+    assert.deepEqual(gum.at(-1).video.deviceId, { exact: second.id }, 'asked for exactly that camera');
+    // the new camera is live
+    await page.waitForFunction(() => window.__game.tracker.video.readyState >= 2 && window.__game.tracker.video.videoWidth > 0, { timeout: 30000 });
+
+    // pressing C enough times comes back round to the first camera
+    for (let i = 0; i < 2; i++) {
+      const before = await page.evaluate(() => window.__game.tracker.deviceId);
+      await page.keyboard.press('c');
+      await page.waitForFunction((id) => window.__game.tracker.deviceId !== id && localStorage.getItem('kcg.camera') === window.__game.tracker.deviceId, { timeout: 15000 }, before);
+    }
+    assert.equal(await page.evaluate(() => window.__game.tracker.deviceId), first.id, 'wraps round');
+
+    // a fresh page start picks up the remembered camera
+    await page.keyboard.press('c');
+    await page.waitForFunction((id) => window.__game.tracker.deviceId !== id && localStorage.getItem('kcg.camera') === window.__game.tracker.deviceId, { timeout: 15000 }, first.id);
+    const remembered = await page.evaluate(() => localStorage.getItem('kcg.camera'));
+    const page2 = (await openGame(browser, url + '?model=full', { init: spyOnCamera })).page;
+    await waitForState(page2, 'menu', 60000);
+    assert.equal(await page2.evaluate(() => window.__game.tracker.deviceId), remembered, 'starts on the remembered camera');
+    assert.deepEqual((await page2.evaluate(() => window.__gum))[0].video.deviceId, { exact: remembered });
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('CAMERA: mashing C does not start overlapping switches (extra presses are ignored until the switch is done)', { skip }, async () => {
+  const { browser, page, problems } = await openWithCameras(exe, url + '?model=full', { init: spyOnCamera });
+  try {
+    const before = await page.evaluate(() => window.__gum.length);
+    for (let i = 0; i < 8; i++) await page.keyboard.press('c'); // hammered in a few milliseconds
+    await page.waitForFunction(() => /Camera \d of \d/.test(window.__game.g.toast?.text ?? ''), { timeout: 15000 });
+    await wait(1500);
+    const used = await page.evaluate((b) => window.__gum.length - b, before);
+    assert.ok(used <= 2, `8 quick presses opened the camera ${used} time(s), not 8`);
+    assert.equal(await page.evaluate(() => window.__game.tracker.video.readyState >= 2), true, 'and the camera is still live');
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('CAMERA: with only one camera, C explains instead of breaking', { skip }, async () => {
+  const browser = await launch(exe, camArgs());
+  try {
+    const { page, problems } = await openGame(browser, url + '?model=full');
+    await waitForState(page, 'menu', 60000);
+    const id = await page.evaluate(() => window.__game.tracker.deviceId);
+    await page.keyboard.press('c');
+    await page.waitForFunction(() => /Only one camera/.test(window.__game.g.toast?.text ?? ''), { timeout: 5000 });
+    assert.equal(await page.evaluate(() => window.__game.tracker.deviceId), id, 'still on the same camera');
+    assert.equal(await page.evaluate(() => window.__game.tracker.video.readyState >= 2), true, 'and still live');
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('CAMERA: a webcam that struggles at 720p (about 8 fps) is quietly switched to 640x480', { skip }, async () => {
+  const browser = await launch(exe, camArgs());
+  try {
+    const { page, problems } = await openGame(browser, url + '?model=full', { init: [spyOnCamera, slowCamera] });
+    await waitForState(page, 'menu', 60000);
+    await page.waitForFunction(() => window.__gum.length >= 2, { timeout: 30000 });
+    const gum = await page.evaluate(() => window.__gum);
+    assert.equal(gum[0].video.width.ideal, 1280, 'first tried 720p');
+    assert.equal(gum[1].video.width.ideal, 640, 'then fell back to 640x480');
+    await page.waitForFunction(() => window.__game.tracker.mode === 'standard', { timeout: 15000 });
+    await page.waitForFunction(() => window.__game.tracker.video.readyState >= 2, { timeout: 15000 });
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('CAMERA: ?cam=wide pins the picture size: a slow camera is NOT switched', { skip }, async () => {
+  const browser = await launch(exe, camArgs());
+  try {
+    const { page, problems } = await openGame(browser, url + '?model=full&cam=wide', { init: [spyOnCamera, slowCamera] });
+    await waitForState(page, 'menu', 60000);
+    await wait(7000); // longer than the fallback needs to decide
+    assert.equal((await page.evaluate(() => window.__gum)).length, 1);
+    assert.equal(await page.evaluate(() => window.__game.tracker.mode), 'wide');
     assert.deepEqual(problems, []);
   } finally {
     await browser.close();

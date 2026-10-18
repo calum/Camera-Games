@@ -93,7 +93,8 @@ code changes. See `assets/README.md`. New art types are one line in `src/art.js`
 - [ ] **M5b: silhouette-only gameplay** (use the silhouette itself, not just the skeleton) for big groups and for kids who are too close
       or too small for skeleton tracking.
 - [ ] **M6: Raspberry Pi kiosk.** Chromium in kiosk mode on boot, or a native Rust port if the browser is too slow.
-- [ ] **M7: phone/iPad camera.** Serve over HTTPS on the home network.
+- [x] **M7a: phone as a webcam.** Camera picker (C), remembered choice, 16:9 full-field-of-view request, slow-camera fallback, portrait warning. Works with any phone-as-webcam app that appears as a camera.
+- [ ] **M7b: phone/iPad camera streamed to the laptop, or the game running on the phone.** Needs HTTPS (e.g. GitHub Pages) and relative asset paths; only worth it if the off-the-shelf apps prove too laggy.
 
 ## Cut-out and cartoon worlds
 
@@ -104,6 +105,14 @@ Request: show only the kids, in a cartoon world that matches each level, and don
 * **Safeguards:** motion held up for over 5 s with no pose support is absorbed into the background (a moved cushion can't haunt the screen); a big global change (lights, camera bump) is ignored; webcam auto-exposure is compensated.
 * **Rendering:** `src/cutout.js` composites the camera frame with the mask as alpha; `src/backdrops.js` draws one animated cartoon scene per level (static layer cached). Drop `assets/bg_<name>.png` to use your own art. B toggles the plain camera picture. Debug (D) shows coverage and whether the pose mask is ON or LOST.
 * **Cost:** ~3 ms/frame for the fusion and compositing, backdrops negligible (measured in a software-rendered test browser).
+
+## Cameras and field of view
+
+* A wider field of view matters more than which camera is used. Phones have ultra-wide lenses (often ~120 degrees) vs ~60-80 for a basic webcam; many webcams also crop the sides at 640x480.
+* Measured (software-rendered test browser, so only the ratios matter): pose model + silhouette readback took ~34 ms at 640x480, ~37 ms at 1280x720, ~44 ms at 1920x1080. So the game asks for 1280x720 by default.
+* Cheap webcams can fall to ~10 fps at 720p, which feels broken. `FpsGuard` measures the real delivery rate (`presentedFrames`) for a few seconds and drops to 640x480 if it is under ~15 fps.
+* Latency budget for a phone webcam app: USB adds roughly 50-100 ms, Wi-Fi roughly 100-300 ms (estimates, not measured here). The levels' timing windows are forgiving (jump window 0.5 s early to 0.3 s late).
+* A custom phone-to-laptop stream was rejected: browsers need HTTPS for a phone camera, so it means certificates on the home network and still adds delay.
 
 ## Making it work for small kids
 

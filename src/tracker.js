@@ -7,6 +7,7 @@
 // model, a Pi build) can be swapped in without touching the game.
 
 import { OneEuro } from './filter.js';
+import { cameraConstraints, nextCameraId, describeCamera, saveCamera, parseMode, withRetry, FpsGuard } from './camera.js';
 import { downsampleMaxInto } from './person-mask.js';
 
 export const BONES = [
@@ -123,7 +124,18 @@ const SLOW_MS = 50;
 export class PoseTracker {
   // model: 'lite' | 'full'. Not given = start with the more accurate 'full' model (noticeably better
   // on children) and fall back to 'lite' automatically on a slow machine.
-  constructor({ model } = {}) {
+  // cameraMode: 'wide' | 'standard'. Not given = 'wide' (full field of view), dropping to 'standard' by itself
+  // if the camera can't keep up.
+  constructor({ model, cameraMode, retryDelayMs = 250 } = {}) {
+    this.retryDelayMs = retryDelayMs; // pause between retries when a camera is slow to let go (see camera.js)
+    this.mode = parseMode(cameraMode) ?? 'wide';
+    this.modePinned = parseMode(cameraMode) !== null;
+    this.deviceId = null;
+    this.cameraLabel = '';
+    this.cameras = [];
+    this.cameraFps = 0;
+    this.fpsGuard = null;
+    this._camQueue = Promise.resolve();
     this.video = document.createElement('video');
     this.video.playsInline = true;
     this.video.muted = true;
@@ -215,13 +227,134 @@ export class PoseTracker {
     }
   }
 
-  async startCamera() {
-    const stream = await navigator.mediaDevices.getUserMedia({
-      video: { width: { ideal: 640 }, height: { ideal: 480 }, frameRate: { ideal: 30 }, facingMode: 'user' },
-      audio: false,
-    });
+  // Opens a camera. deviceId = a specific camera (falls back to the default one if it has gone away);
+  // mode = 'wide' (full field of view, 1280x720) or 'standard' (640x480).
+  startCamera(opts = {}) {
+    return this._queue(() => this._startCamera(opts));
+  }
+
+  // Camera operations (start, switch, the slow-camera fallback) run strictly one after another, so two of
+  // them can never fight over the camera, however the keys are pressed or whatever the timing.
+  _queue(fn) {
+    const run = this._camQueue.then(fn, fn);
+    this._camQueue = run.catch(() => {});
+    return run;
+  }
+
+  async _startCamera({ deviceId = null, mode = this.mode } = {}) {
+    this.stopCamera();
+    let stream;
+    try {
+      stream = await this._getStream(cameraConstraints({ deviceId, mode }));
+    } catch (e) {
+      if (!deviceId) throw e;
+      console.warn('that camera is unavailable, using the default one', e);
+      stream = await this._getStream(cameraConstraints({ mode }));
+    }
+    const track = stream.getVideoTracks()[0];
+    this.mode = mode;
+    this.deviceId = track?.getSettings?.().deviceId ?? deviceId;
+    this.cameraLabel = track?.label || 'camera';
     this.video.srcObject = stream;
     await this.video.play();
+    // a new picture: forget the old kids and masks (the size may differ)
+    this.players = [];
+    this.maskLow = null;
+    this.lastVideoTime = -1;
+    await this.refreshCameras();
+    this._watchCameraFps();
+  }
+
+  _getStream(constraints) {
+    return withRetry(() => navigator.mediaDevices.getUserMedia(constraints), { delayMs: this.retryDelayMs });
+  }
+
+  stopCamera() {
+    this.video.srcObject?.getTracks().forEach((t) => t.stop());
+    this.fpsGuard = null;
+  }
+
+  // All cameras the browser knows about (labels only appear after permission has been given).
+  async refreshCameras() {
+    try {
+      this.cameras = await navigator.mediaDevices.enumerateDevices();
+    } catch {
+      this.cameras = [];
+    }
+    return this.cameras;
+  }
+
+  get cameraCount() {
+    return this.cameras.filter((d) => d.kind === 'videoinput' && d.deviceId).length;
+  }
+
+  // Switch to the next camera (e.g. a phone webcam app). Returns a description, or null if there is only one.
+  nextCamera() {
+    return this._queue(() => this._nextCamera());
+  }
+
+  async _nextCamera() {
+    await this.refreshCameras();
+    let id = nextCameraId(this.cameras, this.deviceId);
+    if (!id) {
+      // Some systems leave the camera that is in use out of the list. Release it and look again; if there
+      // really is only one camera, carry on with that one.
+      const current = this.deviceId;
+      this.stopCamera();
+      // the list can be empty for a moment right after a camera is released, so look a few times
+      for (let tries = 0; tries < 4; tries++) {
+        await this.refreshCameras();
+        if (this.cameraCount > 0) break;
+        await new Promise((r) => setTimeout(r, this.retryDelayMs));
+      }
+      id = nextCameraId(this.cameras, current);
+      if (!id) {
+        await this._startCamera({ deviceId: current });
+        return null;
+      }
+    }
+    const previous = this.deviceId;
+    try {
+      await this._startCamera({ deviceId: id });
+    } catch (e) {
+      // never leave the game without a picture: put the old camera back, then report the problem
+      console.warn('could not switch camera, going back to the previous one', e);
+      await this._startCamera({ deviceId: previous }).catch((err) => console.error('could not restore the camera either', err));
+      throw e;
+    }
+    saveCamera(globalThis.localStorage, this.deviceId);
+    return describeCamera(this.cameras, this.deviceId, this.cameraLabel);
+  }
+
+  // A camera that can't keep up at 720p (common with cheap webcams) makes everything feel laggy, so if it
+  // delivers fewer than ~15 frames a second we quietly ask for 640x480 instead.
+  _watchCameraFps() {
+    if (!this.video.requestVideoFrameCallback) return;
+    const guard = (this.fpsGuard = new FpsGuard());
+    const tick = (now, meta) => {
+      if (this.fpsGuard !== guard) return; // camera was switched meanwhile
+      // presentedFrames counts what the camera really delivered, even if a busy page missed some callbacks
+      // (a slow laptop must not make a healthy camera look slow); older browsers fall back to counting callbacks
+      if (Number.isFinite(meta?.presentedFrames)) guard.sample(now / 1000, meta.presentedFrames);
+      else guard.frame(now / 1000);
+      this.cameraFps = guard.fps;
+      const verdict = guard.verdict();
+      if (verdict === 'slow' && this.mode === 'wide' && !this.modePinned) {
+        console.warn(`camera only delivers ${guard.fps.toFixed(0)} fps at 720p, switching to 640x480`);
+        this._queue(async () => {
+          if (this.fpsGuard !== guard) return; // the camera was changed while this waited its turn
+          await this._startCamera({ deviceId: this.deviceId, mode: 'standard' });
+        }).catch((e) => console.error(e));
+        return;
+      }
+      if (verdict === 'pending') this.video.requestVideoFrameCallback(tick);
+    };
+    this.video.requestVideoFrameCallback(tick);
+  }
+
+  // true if the camera picture is upright (a phone held the wrong way round): the view is narrow and tall
+  get isPortrait() {
+    return this.video.videoHeight > this.video.videoWidth && this.video.videoWidth > 0;
   }
 
   update(now) {
