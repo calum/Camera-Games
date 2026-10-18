@@ -29,6 +29,12 @@ const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
  * @param {number} now
  * @param {{ skipJump?: boolean }} [opts]
  */
+// Duck: the head drops this many shoulder widths below the kid's own standing height.
+const DUCK_DROP = 0.8;
+// Joints whose speed makes up p.motion (nose, shoulders, wrists, hips, knees), and its smoothing time.
+const MOTION_JOINTS = [0, 11, 12, 15, 16, 23, 24, 25, 26];
+const MOTION_SMOOTH = 0.3; // seconds
+
 export function computeFeatures(p, now, { skipJump = false } = {}) {
   const px = p.px;
   const sh = mid(px[11], px[12]);
@@ -68,6 +74,26 @@ export function computeFeatures(p, now, { skipJump = false } = {}) {
     p.wasJump = jumping;
   }
 
+  // Duck baseline: the head's standing height. It follows the head up quickly (standing up straight,
+  // stepping back) and down only slowly (stepping closer), and holds still while jumping so the top of a
+  // jump doesn't make the landing look like a duck. Measured in shoulder widths, like the poses.
+  const head = px[0].y;
+  if (p.headBase === undefined) p.headBase = head;
+  else if (!p.wasJump) p.headBase += (head - p.headBase) * (head < p.headBase ? 0.25 : 0.01);
+
+  // Motion: average speed of the main joints in shoulder widths per second, smoothed over ~0.3 s, so a
+  // single jittery frame can't make a frozen kid look like they moved.
+  if (p.motionPx && now > p.motionT) {
+    const dt = now - p.motionT;
+    let sum = 0;
+    for (const i of MOTION_JOINTS) sum += dist(px[i], p.motionPx[i]);
+    const speed = Math.min(20, sum / MOTION_JOINTS.length / shoulderW / dt);
+    p.motion += (speed - p.motion) * Math.min(1, dt / MOTION_SMOOTH);
+  }
+  p.motion ??= 0;
+  p.motionPx = px.map((q) => ({ x: q.x, y: q.y }));
+  p.motionT = now;
+
   // Simple rule-based poses. Everything is measured in shoulder-widths (s): the shoulders are the
   // best-tracked joints and the measure that stays sensible for small kids. (An earlier version used
   // torso length, which is estimated from the hips and is badly off for kids: bigger heads, shorter
@@ -94,6 +120,8 @@ export function computeFeatures(p, now, { skipJump = false } = {}) {
       wr.y < sh.y - 0.25 * s &&
       wl.y > nose.y - 0.7 * s &&
       wr.y > nose.y - 0.7 * s,
+    // head well below where it is when standing (crouching, ducking under something)
+    duck: head - p.headBase > DUCK_DROP * s,
   };
 
   // Hysteresis: a pose switches on once it has held for a couple of frames and only switches off
@@ -107,6 +135,7 @@ export function computeFeatures(p, now, { skipJump = false } = {}) {
     p.poseState[key] = p.poseState[key] ? ema > 0.3 : ema > 0.6;
   }
   p.pose = { ...p.poseState };
+  if (p.pose.duck) p.lastDuck = now;
 }
 
 // If tracking averages slower than this per frame, step down the quality ladder (see QUALITY and _watchSpeed).
@@ -646,7 +675,7 @@ export class PoseTracker {
 }
 
 // Fallback / testing: the mouse is one kid. Mouse = body + hands, button = jump,
-// Q / W / E = arms up / airplane / hands on head.
+// Q / W / E = arms up / airplane / hands on head, S = duck. Moving the mouse is motion.
 export class MouseTracker {
   constructor(canvas) {
     this.players = [];
@@ -655,7 +684,7 @@ export class MouseTracker {
     this.pos = { x: 640, y: 300 };
     this.down = false;
     this.keys = new Set();
-    this.player = /** @type {Player} */ ({ id: 1, slot: 0, color: COLORS[0], px: null, present: true, seen: 0, score: 0, jumps: 0, lastJump: -99, hitUntil: 0, pose: {}, hands: [], circles: [], sh: { x: 0, y: 0 }, hip: { x: 0, y: 0 }, cx: 0, shoulderW: 0, torso: 0 });
+    this.player = /** @type {Player} */ ({ id: 1, slot: 0, color: COLORS[0], px: null, present: true, seen: 0, score: 0, jumps: 0, lastJump: -99, lastDuck: -99, motion: 0, hitUntil: 0, pose: {}, hands: [], circles: [], sh: { x: 0, y: 0 }, hip: { x: 0, y: 0 }, cx: 0, shoulderW: 0, torso: 0 });
     this.detectMs = 0;
     this.delegate = 'mouse';
     canvas.addEventListener('pointermove', (e) => {
@@ -698,7 +727,8 @@ export class MouseTracker {
     p.present = true;
     computeFeatures(p, now, { skipJump: true });
     if (this.down) p.lastJump = now;
-    p.pose = { armsUp: this.keys.has('q'), airplane: this.keys.has('w'), handsHead: this.keys.has('e') };
+    p.pose = { armsUp: this.keys.has('q'), airplane: this.keys.has('w'), handsHead: this.keys.has('e'), duck: this.keys.has('s') };
+    if (p.pose.duck) p.lastDuck = now;
     this.players = [p];
     return this.players;
   }

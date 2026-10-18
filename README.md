@@ -83,7 +83,7 @@ menu shows a small "Full screen works best" note with a button (on iPhone it sug
 since web pages can't go full screen there). The screen is kept awake while the game is open.
 
 **Mouse mode** needs no camera (and is used automatically if the camera is blocked): move = body and hands,
-click = jump, hold Q / W / E = arms up / airplane / hands on head.
+click = jump, hold Q / W / E = arms up / airplane / hands on head, hold S = duck.
 
 URL options: `?mouse`, `?debug`, `?lite` (turn off glow effects on a slow machine), `?model=lite` or
 `?model=full`, `?quality=high|medium|low|lowest` (pin the tracking quality, see below), `?view=camera`,
