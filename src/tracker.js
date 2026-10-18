@@ -9,7 +9,7 @@
 /** @import { Player, Point } from './types.js' */
 import { OneEuro } from './filter.js';
 import { cameraConstraints, nextCameraId, describeCamera, saveCamera, parseMode, withRetry, FpsGuard } from './camera.js';
-import { downsampleMaxInto } from './person-mask.js';
+import { downsampleMaxInto, skeletonMaskInto } from './person-mask.js';
 import { People, COLORS } from './people.js';
 import { lookOf } from './look.js';
 
@@ -139,9 +139,15 @@ export function computeFeatures(p, now, { skipJump = false } = {}) {
 }
 
 // If tracking averages slower than this per frame, step down the quality ladder (see QUALITY and _watchSpeed).
+// Measured from sending a frame to getting its answer back, which is the delay the kids actually see.
 const SLOW_MS = 50;
 // ...and if it averages faster than this for a long while, step back up.
-const FAST_MS = 18;
+const FAST_MS = 20;
+// The ladder works in seconds, not frames: on a machine tracking 2 frames a second, "90 frames" was
+// 45 s per step, minutes of lag before it got anywhere near a speed that works.
+const WARMUP_S = 1; // the first frames after a start or a switch are always slow (shaders compile)
+const MEASURE_S = 3; // how long to average before stepping down
+const FAST_S = 20; // how long it must stay fast before stepping back up
 
 // The quality ladder, best first. Each step is cheaper than the one before:
 //   model:  'full' is noticeably better on children; 'lite' is about twice as fast
@@ -340,8 +346,12 @@ export class PoseTracker {
     if (pinnedModel) level = QUALITY.findIndex((q) => q.model === pinnedModel);
     this.level = level;
     this.frames = 0;
+    this.measured = 0;
     this.speedSum = 0;
-    this.fastFrames = 0;
+    /** @type {number | null} */ this.watchStart = null;
+    /** @type {number | null} */ this.measureStart = null;
+    /** @type {number | null} */ this.fastSince = null;
+    this.triedMainThread = false;
     this.switching = false;
     this.inflight = null;
     this.latest = null;
@@ -397,6 +407,22 @@ export class PoseTracker {
         this.useWorker = false;
       }
     }
+    if (this.engine?.delegate === 'CPU') {
+      // Some browsers can't use the graphics chip from a worker, and the model on the processor is many
+      // times slower (that was a second of lag a frame). If the main thread gets the graphics chip, track there.
+      try {
+        const main = new MainThreadEngine();
+        await main.init({ model: q.model, masks: q.masks });
+        if (main.delegate === 'GPU') {
+          console.warn('the pose worker has no graphics chip, tracking on the main thread');
+          this.engine.close();
+          this.engine = main;
+          this.useWorker = false;
+        } else main.close();
+      } catch (e) {
+        console.warn(e);
+      }
+    }
     if (!this.engine) {
       this.engine = new MainThreadEngine();
       await this.engine.init({ model: q.model, masks: q.masks });
@@ -404,34 +430,53 @@ export class PoseTracker {
     this.delegate = this.engine.delegate;
   }
 
-  // Keeps an eye on how long tracking takes. After ~3 s of steady frames: too slow, step down the ladder
-  // (full -> lite model, then a smaller frame, then no silhouettes); comfortably fast for a long while,
-  // step back up. One step at a time, with the measurement restarted after each, so it can't oscillate.
-  _watchSpeed(ms) {
+  // Keeps an eye on how long tracking takes (ms per frame, at time `now` in seconds). After a short warm-up
+  // and ~3 s of measuring: too slow, step down the ladder (full -> lite model, then a smaller frame, then no
+  // silhouettes); comfortably fast for a long while, step back up. One step at a time, with the measurement
+  // restarted after each, so it can't oscillate. Still too slow at the bottom of the ladder while tracking
+  // in the worker: try the main thread instead (see _leaveWorker).
+  _watchSpeed(ms, now) {
     this.frames++;
-    if (this.frames <= 30) return; // warm-up frames are always slow
+    this.watchStart ??= now;
+    if (now - this.watchStart < WARMUP_S || this.frames <= 2) return;
+    this.measureStart ??= now;
     this.speedSum += ms;
-    this.fastFrames = ms < FAST_MS ? this.fastFrames + 1 : 0;
-    const n = this.frames - 30;
-    if (n >= 90 && this.speedSum / n > SLOW_MS && this.level < QUALITY.length - 1) {
-      console.warn(`tracking averages ${(this.speedSum / n).toFixed(0)}ms/frame, stepping down`);
-      this._setLevel(this.level + 1);
-    } else if (this.fastFrames >= 600 && this.level > 0) {
+    this.measured++;
+    if (ms < FAST_MS) this.fastSince ??= now;
+    else this.fastSince = null;
+    const avg = this.speedSum / this.measured;
+    const slow = now - this.measureStart >= MEASURE_S && this.measured >= 3 && avg > SLOW_MS;
+    const free = !this.qualityPinned && !this.pinned; // ?model= / ?quality= pin it (the e2e tests do)
+    if (slow && this.level < QUALITY.length - 1 && !this.qualityPinned && this._setLevel(this.level + 1)) {
+      console.warn(`tracking averages ${avg.toFixed(0)}ms/frame, stepped down to ${this.quality.name}`);
+    } else if (slow && free && this.level === QUALITY.length - 1 && this.useWorker && !this.triedMainThread) {
+      console.warn(`tracking in the worker still averages ${avg.toFixed(0)}ms/frame, trying the main thread`);
+      this.triedMainThread = true;
+      this._leaveWorker();
+    } else if (this.fastSince !== null && now - this.fastSince >= FAST_S && this.level > 0) {
       this._setLevel(this.level - 1);
     } else return;
-    this.frames = 30;
+    this._restartWatch();
+  }
+
+  _restartWatch() {
+    this.frames = 0;
+    this.measured = 0;
     this.speedSum = 0;
-    this.fastFrames = 0;
+    this.watchStart = null;
+    this.measureStart = null;
+    this.fastSince = null;
   }
 
   // Move to another rung of the ladder, unless the model or the whole ladder is pinned.
   _setLevel(level) {
-    if (this.qualityPinned) return;
+    if (this.qualityPinned) return false;
     const from = this.quality;
     const to = QUALITY[Math.max(0, Math.min(QUALITY.length - 1, level))];
-    if (this.pinned && to.model !== from.model) return;
+    if (this.pinned && to.model !== from.model) return false;
     this.level = QUALITY.indexOf(to);
     if (to.model !== from.model || to.masks !== from.masks) this._switchModel(to.model, to.masks);
+    return true;
   }
 
   async _switchModel(name, masks = this.quality.masks) {
@@ -586,10 +631,12 @@ export class PoseTracker {
     if (this.engine && !this.switching && !this.inflight && v.readyState >= 2 && v.currentTime !== this.lastVideoTime) {
       this.lastVideoTime = v.currentTime;
       const q = this.quality;
+      const sent = performance.now();
       this.inflight = this.engine
-        .detect(v, performance.now(), { scale: q.scale, maskW: this.maskW })
+        .detect(v, sent, { scale: q.scale, maskW: this.maskW })
         .then((res) => {
-          if (res) this.latest = res;
+          // the whole round trip (frame copy, the worker, the answer coming back), not just the model's share
+          if (res) this.latest = { ...res, ms: Math.max(res.ms, performance.now() - sent) };
           this.failures = 0;
         })
         .catch((e) => {
@@ -604,7 +651,7 @@ export class PoseTracker {
       const res = this.latest;
       this.latest = null;
       this.detectMs = this.detectMs * 0.9 + res.ms * 0.1;
-      this._watchSpeed(res.ms);
+      this._watchSpeed(res.ms, now);
       if (this.simulateLost) this._apply({ landmarks: [], looks: [], mask: null, maskW: res.maskW, maskH: res.maskH }, now);
       else this._apply(res, now);
     }
@@ -618,10 +665,14 @@ export class PoseTracker {
     if (res.mask) {
       this.maskLow = res.mask;
       this.maskH = res.maskH;
-    } else if (this.maskLow && this.maskLow.length === this.maskW * this.maskH) this.maskLow.fill(0);
-    else if (this.video.videoWidth) {
-      this.maskH = Math.round((this.maskW * this.video.videoHeight) / this.video.videoWidth);
-      this.maskLow = new Float32Array(this.maskW * this.maskH);
+    } else {
+      if (this.maskLow && this.maskLow.length === this.maskW * this.maskH) this.maskLow.fill(0);
+      else if (this.video.videoWidth) {
+        this.maskH = Math.round((this.maskW * this.video.videoHeight) / this.video.videoWidth);
+        this.maskLow = new Float32Array(this.maskW * this.maskH);
+      }
+      // no silhouettes from the model (the cheapest quality rung): draw rough ones from the skeletons
+      if (this.maskLow) skeletonMaskInto(res.landmarks, this.maskLow, this.maskW, this.maskH);
     }
     this._ingest(res.landmarks, res.looks || [], now);
   }

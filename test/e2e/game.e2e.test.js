@@ -321,6 +321,32 @@ test('CUT-OUT: a pose-tracking glitch fades the kid out gently instead of poppin
   }
 });
 
+// Play-test bug: half way through a game the picture of the kids vanished and only skeletons were left. The
+// quality ladder had stepped down to its last rung, where the model gives no silhouettes for the cut-out.
+test('CUT-OUT: on the cheapest tracking rung (no silhouettes from the model) the kid is still shown', { skip }, async () => {
+  const browser = await launch(exe, camArgs());
+  try {
+    const { page, problems } = await openGame(browser, url + '?quality=lowest');
+    await waitForState(page, 'menu', 60000);
+    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 20000 });
+    await page.keyboard.press('Space');
+    await playLevel(page, 'dance');
+    await waitForState(page, 'play', 10000);
+    // well past the ~0.9 s it takes a kid with no silhouette to fade out
+    const seq = await page.evaluate(() => window.__game.tracker.frameSeq);
+    await page.waitForFunction((s) => window.__game.tracker.frameSeq >= s + 8, { timeout: 60000 }, seq);
+    const stats = await page.evaluate(() => ({ ...window.__game.cutout.stats, ready: window.__game.cutoutReady, masks: window.__game.tracker.quality.masks }));
+    assert.equal(stats.masks, false, 'the model really runs without silhouettes');
+    assert.equal(stats.ready, true);
+    assert.ok(stats.coverage > 0.02 && stats.coverage < 0.3, `the kid is still cut out (${(stats.coverage * 100).toFixed(1)}% of the picture)`);
+    const face = await patch(page, 0.52, 0.4, 5);
+    assert.ok(face.r > face.b + 15 && face.r > 70, `the kid is visible (${face.r.toFixed(0)},${face.g.toFixed(0)},${face.b.toFixed(0)})`);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
 test('BACKDROPS: every level has its own cartoon world and they all draw cleanly', { skip }, async () => {
   const browser = await launch(exe);
   try {

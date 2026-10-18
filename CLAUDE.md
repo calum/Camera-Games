@@ -80,7 +80,11 @@ Key ideas to preserve:
 - The frame-rate fallback measures the camera's real delivery rate from `requestVideoFrameCallback`'s `presentedFrames`, not callback counts, so a slow laptop is never mistaken for a slow camera. `?cam=` pins the picture size.
 - Tracking quality is a ladder (`QUALITY` in `tracker.js`: full model, lite, lite at half size, lite without
   masks). Laptops start at the top, phones one rung down (`device.js`); it steps down when tracking averages
-  over `SLOW_MS` and back up after a long fast spell. `?model=` pins the model, `?quality=` the whole ladder.
+  over `SLOW_MS` and back up after a long fast spell. It is timed in seconds and measures the whole round trip
+  (frame sent to answer back), so a very slow device gets to a workable rung in seconds. Still slow at the bottom
+  in the worker, or a worker without the GPU, means tracking moves to the main thread. Without model masks the
+  cut-out is fed silhouettes drawn from the skeletons (`skeletonMaskInto`), or the kids would vanish from the
+  picture. `?model=` pins the model, `?quality=` the whole ladder.
   The canvas is capped at 1920x1080 (scaled up by CSS) and glow effects turn off when drawing gets slow.
 - The mask fusion in `person-mask.js` is tuned by `DEFAULTS` at the top of that file. Level difficulty constants
   (rock speed, wave timing, hold times) are at the top of `levels.js`.

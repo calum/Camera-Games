@@ -14,8 +14,9 @@ function trackerWith(opts) {
   t._switchModel = (name) => t.switched.push(name); // don't actually load anything
   return t;
 }
-const feed = (t, ms, n = 130) => {
-  for (let i = 0; i < n; i++) t._watchSpeed(i < 30 ? 400 : ms); // first frames are always slow (warm-up)
+// n frames at `fps` frames a second, each taking `ms` (the first second is always slow: warm-up)
+const feed = (t, ms, n = 130, fps = 30) => {
+  for (let i = 0; i < n; i++) t._watchSpeed(i < fps ? 400 : ms, i / fps);
   return t.switched;
 };
 
@@ -39,6 +40,63 @@ test('warm-up spikes alone do not trigger the fallback', () => {
 
 test('an explicit ?model=full is never overridden', () => {
   assert.deepEqual(feed(trackerWith({ model: 'full' }), 200), []);
+});
+
+// Play-test bug: on a laptop tracking about one frame a second, the frame-counting ladder took minutes per
+// step, so the game lagged by a second or more for most of a session before it found a speed that worked.
+test('a very slow tracker steps all the way down the ladder within seconds, not minutes', () => {
+  const t = trackerWith();
+  let seconds = 0;
+  for (let i = 0; i < 60 && t.quality.name !== 'lowest'; i++) t._watchSpeed(1000, (seconds = i));
+  assert.equal(t.quality.name, 'lowest');
+  assert.ok(seconds <= 20, `reached the bottom after ${seconds} s`);
+});
+
+test('still too slow at the bottom of the ladder in the worker: try the main thread, once', () => {
+  const t = trackerWith({ startQuality: 'lowest' });
+  t.useWorker = true;
+  let tries = 0;
+  t._leaveWorker = async () => void tries++;
+  for (let i = 0; i < 60; i++) t._watchSpeed(500, i / 2);
+  assert.equal(tries, 1);
+});
+
+test('a pinned model never leaves the worker or the model, however slow', () => {
+  const t = trackerWith({ model: 'full' });
+  t.useWorker = true;
+  let tries = 0;
+  t._leaveWorker = async () => void tries++;
+  for (let i = 0; i < 60; i++) t._watchSpeed(1000, i);
+  assert.equal(tries, 0);
+  assert.deepEqual(t.switched, []);
+});
+
+test('a comfortably fast spell steps back up the ladder', () => {
+  const t = trackerWith({ startQuality: 'medium' });
+  feed(t, 10, 30 * 25);
+  assert.deepEqual(t.switched, ['full']);
+});
+
+// Play-test bug: on the cheapest rung (no silhouettes from the model) the cut-out faded to nothing and the
+// kids only saw their skeletons. Without model silhouettes, the mask is drawn from the skeletons instead.
+test('without silhouettes from the model, the cut-out mask is drawn from the skeleton', () => {
+  const t = new PoseTracker();
+  t.maskW = 64;
+  t.maskH = 36;
+  const lm = Array.from({ length: 33 }, () => ({ x: 0.5, y: 0.5, visibility: 0.9 }));
+  lm[0] = { x: 0.5, y: 0.2, visibility: 0.9 };
+  lm[11] = { x: 0.45, y: 0.35, visibility: 0.9 };
+  lm[12] = { x: 0.55, y: 0.35, visibility: 0.9 };
+  lm[23] = { x: 0.47, y: 0.6, visibility: 0.9 };
+  lm[24] = { x: 0.53, y: 0.6, visibility: 0.9 };
+  t._apply({ landmarks: [lm], looks: [], mask: null, maskW: 64, maskH: 36 }, 1);
+  const at = (x, y) => t.maskLow[Math.floor(y * 36) * 64 + Math.floor(x * 64)];
+  assert.equal(at(0.5, 0.45), 1, 'the body is in the mask');
+  assert.equal(at(0.5, 0.2), 1, 'the head is in the mask');
+  assert.equal(at(0.1, 0.9), 0, 'the room is not');
+  // nobody found: the mask empties (so the cut-out fades out rather than freezing)
+  t._apply({ landmarks: [], looks: [], mask: null, maskW: 64, maskH: 36 }, 2);
+  assert.ok(t.maskLow.every((v) => v === 0));
 });
 
 // ---- drawing: kids stay visible ---------------------------------------------------------------------
