@@ -9,7 +9,8 @@
 /** @import { Player, Point } from './types.js' */
 import { OneEuro } from './filter.js';
 import { cameraConstraints, nextCameraId, describeCamera, saveCamera, parseMode, withRetry, FpsGuard } from './camera.js';
-import { downsampleMaxInto, skeletonMaskInto } from './person-mask.js';
+import { skeletonMaskInto } from './person-mask.js';
+import { MASK_W, LOOK_W, landmarkerOptions, mergeMasks } from './pose-shared.js';
 import { People, COLORS } from './people.js';
 import { lookOf } from './look.js';
 import { Health, retryDelay } from './health.js';
@@ -24,18 +25,18 @@ export const BONES = [
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
-/**
- * Derive everything the game needs from the 33 screen-space landmarks in p.px.
- * @param {any} p  a Player (or anything with px[33]; the tests pass bare objects)
- * @param {number} now
- * @param {{ skipJump?: boolean }} [opts]
- */
 // Duck: the head drops this many shoulder widths below the kid's own standing height.
 const DUCK_DROP = 0.8;
 // Joints whose speed makes up p.motion (nose, shoulders, wrists, hips, knees), and its smoothing time.
 const MOTION_JOINTS = [0, 11, 12, 15, 16, 23, 24, 25, 26];
 const MOTION_SMOOTH = 0.3; // seconds
 
+/**
+ * Derive everything the game needs from the 33 screen-space landmarks in p.px.
+ * @param {any} p  a Player (or anything with px[33]; the tests pass bare objects)
+ * @param {number} now
+ * @param {{ skipJump?: boolean }} [opts]
+ */
 export function computeFeatures(p, now, { skipJump = false } = {}) {
   const px = p.px;
   const sh = mid(px[11], px[12]);
@@ -160,8 +161,6 @@ export const QUALITY = [
   { name: 'low', model: 'lite', scale: 0.5, masks: true },
   { name: 'lowest', model: 'lite', scale: 0.5, masks: false },
 ];
-const MASK_W = 256;
-const LOOK_W = 96;
 
 const assetUrl = (/** @type {string} */ rel) => new URL(rel, import.meta.url).href;
 
@@ -183,18 +182,8 @@ class MainThreadEngine {
   async init({ model, masks }) {
     const { FilesetResolver, PoseLandmarker } = await import(assetUrl('../vendor/vision_bundle.mjs'));
     const fileset = await FilesetResolver.forVisionTasks(assetUrl('../vendor/wasm'));
-    // Confidence thresholds are lower than the defaults (0.5): kids are less common in the model's
-    // training data, so it is less sure about them and would otherwise drop them for a few frames.
     this._make = (delegate, name, withMasks) =>
-      PoseLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: assetUrl(`../models/pose_landmarker_${name}.task`), delegate },
-        runningMode: 'VIDEO',
-        numPoses: 4,
-        outputSegmentationMasks: withMasks,
-        minPoseDetectionConfidence: 0.35,
-        minPosePresenceConfidence: 0.35,
-        minTrackingConfidence: 0.35,
-      });
+      PoseLandmarker.createFromOptions(fileset, landmarkerOptions(assetUrl(`../models/pose_landmarker_${name}.task`), delegate, withMasks));
     try {
       this.landmarker = await this._make('GPU', model, masks);
       this.delegate = 'GPU';
@@ -223,8 +212,13 @@ class MainThreadEngine {
     let source = video;
     if (scale !== 1) {
       this.small ??= document.createElement('canvas');
-      this.small.width = Math.round(video.videoWidth * scale);
-      this.small.height = Math.round(video.videoHeight * scale);
+      // only resize when the size changes: setting width or height reallocates (and clears) the canvas
+      const sw = Math.round(video.videoWidth * scale);
+      const sh = Math.round(video.videoHeight * scale);
+      if (this.small.width !== sw || this.small.height !== sh) {
+        this.small.width = sw;
+        this.small.height = sh;
+      }
       this.small.getContext('2d').drawImage(video, 0, 0, this.small.width, this.small.height);
       source = this.small;
     }
@@ -234,19 +228,7 @@ class MainThreadEngine {
     this.lctx.drawImage(video, 0, 0, LOOK_W, lh);
     const rgba = this.lctx.getImageData(0, 0, LOOK_W, lh).data;
     const looks = res.landmarks.map((lm) => lookOf(rgba, LOOK_W, lh, lm));
-    let mask = null;
-    let maskH = 0;
-    if (res.segmentationMasks?.length) {
-      maskH = Math.round((maskW * video.videoHeight) / video.videoWidth);
-      mask = new Float32Array(maskW * maskH);
-      for (const m of res.segmentationMasks) {
-        try {
-          downsampleMaxInto(m.getAsFloat32Array(), m.width, m.height, mask, maskW, maskH);
-        } finally {
-          m.close();
-        }
-      }
-    }
+    const { mask, maskH } = mergeMasks(res.segmentationMasks, maskW, video.videoWidth, video.videoHeight);
     return { landmarks: res.landmarks, looks, mask, maskW, maskH, ms: performance.now() - t0 };
   }
 
@@ -502,7 +484,7 @@ export class PoseTracker {
     try {
       await this.engine.setModel({ model: name, masks });
     } catch (e) {
-      console.error('model switch failed', e);
+      console.warn('model switch failed', e);
     } finally {
       this.switching = false;
     }
@@ -613,7 +595,7 @@ export class PoseTracker {
     } catch (e) {
       // never leave the game without a picture: put the old camera back, then report the problem
       console.warn('could not switch camera, going back to the previous one', e);
-      await this._startCamera({ deviceId: previous }).catch((err) => console.error('could not restore the camera either', err));
+      await this._startCamera({ deviceId: previous }).catch((err) => console.warn('could not restore the camera either', err));
       throw e;
     }
     saveCamera(globalThis.localStorage, this.deviceId);
@@ -638,7 +620,7 @@ export class PoseTracker {
         this._queue(async () => {
           if (this.fpsGuard !== guard) return; // the camera was changed while this waited its turn
           await this._startCamera({ deviceId: this.deviceId, mode: 'standard' });
-        }).catch((e) => console.error(e));
+        }).catch((e) => console.warn('could not switch to 640x480', e));
         return;
       }
       if (verdict === 'pending') this.video.requestVideoFrameCallback(tick);
@@ -673,8 +655,8 @@ export class PoseTracker {
         })
         .catch((e) => {
           if (engine !== this.engine) return;
-          console.error('detect failed', e);
-          this.failures = (this.failures ?? 0) + 1;
+          console.warn('detect failed', e);
+          this.failures++;
           if (this.useWorker && this.failures >= 3) this._leaveWorker();
           else if (this.delegate === 'GPU' && !this.useWorker) this._fallbackToCpu();
         })
@@ -794,7 +776,7 @@ export class PoseTracker {
       this.delegate = engine.delegate;
       this.failures = 0;
     } catch (e) {
-      console.error('could not start tracking on the main thread either', e);
+      console.warn('could not start tracking on the main thread either', e);
     } finally {
       this.switching = false;
     }
@@ -805,7 +787,7 @@ export class PoseTracker {
     try {
       await this.engine.fallbackToCpu(this.quality.model, this.quality.masks);
     } catch (e) {
-      console.error(e);
+      console.warn('could not move tracking to the processor', e);
     }
   }
 

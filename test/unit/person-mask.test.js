@@ -4,6 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PersonMask, downsampleMaxInto } from '../../src/person-mask.js';
+import { mergeMasks } from '../../src/pose-shared.js';
 
 const W = 48;
 const H = 36;
@@ -217,4 +218,18 @@ test('downsampleMaxInto averages blocks and merges several people with max()', (
   const o2 = new Float32Array(4 * 2);
   downsampleMaxInto(half, 8, 4, o2, 4, 2);
   assert.ok(o2.every((v) => Math.abs(v - 0.5) < 1e-6));
+});
+
+test('mergeMasks ORs every person into one small mask the shape of the frame, and closes each model mask', () => {
+  const closed = [];
+  const person = (x0) => {
+    const data = new Float32Array(8 * 4);
+    for (let y = 0; y < 4; y++) for (let x = x0; x < x0 + 2; x++) data[y * 8 + x] = 1;
+    return { width: 8, height: 4, getAsFloat32Array: () => data, close: () => closed.push(x0) };
+  };
+  const { mask, maskH } = mergeMasks([person(0), person(6)], 4, 640, 320);
+  assert.equal(maskH, 2);
+  assert.deepEqual([...mask], [1, 0, 0, 1, 1, 0, 0, 1]);
+  assert.deepEqual(closed, [0, 6]);
+  assert.deepEqual(mergeMasks(undefined, 4, 640, 320), { mask: null, maskH: 0 });
 });

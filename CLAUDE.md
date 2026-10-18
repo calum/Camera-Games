@@ -96,7 +96,7 @@ Key ideas to preserve:
   picture. `?model=` pins the model, `?quality=` the whole ladder.
   The canvas is capped at 1920x1080 (scaled up by CSS) and glow effects turn off when drawing gets slow.
 - The mask fusion in `person-mask.js` is tuned by `DEFAULTS` at the top of that file. Level difficulty constants
-  (rock speed, wave timing, hold times) are at the top of `levels.js`.
+  (rock speed, wave timing, hold times) are at the top of each level's file in `src/levels/`.
 - **The setup check** (state `setup`) runs on the first launch with a camera, until it has passed once
   (`kcg.setupDone` in localStorage). `?setup` shows it again, `?nosetup` or `?level=` skip it, SPACE/Esc/tap skip it.
   `openGame` in the e2e helpers marks it done unless called with `{ setup: true }`.

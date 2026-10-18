@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LEVELS } from '../../src/levels/index.js';
 import template from '../../src/levels/_template.js';
-import { checkLevel, handTouching, bodyHit } from '../../src/levels/kit.js';
+import { checkLevel, handTouching, bodyHit, loseHeart } from '../../src/levels/kit.js';
 import { computeFeatures } from '../../src/tracker.js';
 import { SCENES } from '../../src/backdrops.js';
 
@@ -135,4 +135,18 @@ test('kit: checkLevel explains what is missing', () => {
   assert.ok(problems.some((m) => /hint/.test(m)));
   assert.ok(problems.some((m) => /duration/.test(m)));
   assert.ok(problems.some((m) => /update\(\)/.test(m)));
+});
+
+test('kit: loseHeart takes one heart, flashes the kid, tells the auto-ease and ends the level at zero', () => {
+  const g = makeG([]);
+  g.team.hearts = 2;
+  const p = /** @type {any} */ ({ hitUntil: 0 });
+  loseHeart(/** @type {any} */ (g), p, 0, 0);
+  assert.equal(g.team.hearts, 1);
+  assert.ok(p.hitUntil > g.now);
+  assert.equal(g.misses, 1);
+  assert.equal(g.ended, null);
+  loseHeart(/** @type {any} */ (g), null, 0, 0);
+  assert.equal(g.team.hearts, 0);
+  assert.match(g.ended, /out of hearts/);
 });

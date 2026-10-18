@@ -6,26 +6,25 @@
 import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
 import { text } from '../draw.js';
+import { rand, handTouching, bodyHit, loseHeart } from './kit.js';
 
 export const DURATION = 40;
 export const GOLD_EVERY = 8; // every 8th star is a big golden shooting star
 export const GOLD_POINTS = 3;
 export const METEOR_SHARE = [0.2, 0.35]; // chance an item is a meteor: start and end of the level
-const STAR_R = [55, 80]; // stars are big, toddlers have to hit them (u)
-const STAR_VY = [90, 160]; // gentle fall speed (u/s), well below the meteors
-const GOLD_VY = [180, 240]; // golden stars fall a bit faster
+const STAR_R = /** @type {[number, number]} */ ([55, 80]); // stars are big, toddlers have to hit them (u)
+const STAR_VY = /** @type {[number, number]} */ ([90, 160]); // gentle fall speed (u/s), well below the meteors
+const GOLD_VY = /** @type {[number, number]} */ ([180, 240]); // golden stars fall a bit faster
 const GOLD_R_BONUS = 1.15;
-const METEOR_R = [45, 65];
-const METEOR_VY = [400, 520]; // slowed like the rocks: kids found fast ones too hard
+const METEOR_R = /** @type {[number, number]} */ ([45, 65]);
+const METEOR_VY = /** @type {[number, number]} */ ([400, 520]); // slowed like the rocks: kids found fast ones too hard
 const WARN_TIME = 0.9; // seconds the red "!" column shows before the meteor falls
 const CATCH_SLACK = 30; // hands catch a star this far outside its edge, like bubbles (u)
-const BODY_FACTOR = 0.8; // body circles shrink to 80% in hit tests, like the rocks
 const INVUL_TIME = 1; // shared seconds without damage after a hit
 const AIM_CHANCE = 0.5; // share of meteors aimed at a kid so standing still isn't a plan
 const TAIL_LEN = 3.2; // meteor tail length, in meteor radii
 const MIN_GAP = 0.3; // fastest spawn interval (s)
 
-const rand = (a, b) => a + Math.random() * (b - a);
 const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
 // Chance that a new item is a meteor, rising linearly over the level and capped at the end value.
@@ -127,15 +126,14 @@ const meteor = {
     const u = g.u;
     s.y += s.vy * dt;
     s.x = s.x0 + Math.sin(g.now * s.f + s.ph) * s.amp;
-    for (const p of players) {
-      if (p.hands.some((h) => Math.hypot(h.x - s.x, h.y - s.y) < s.r + CATCH_SLACK * u)) {
-        s.dead = true;
-        const gold = s.kind === 'gold';
-        g.score(p, gold ? GOLD_POINTS : 1, s.x, s.y);
-        g.burst(s.x, s.y, gold ? '#ffd24d' : '#fff6b0', gold ? 24 : 12);
-        (gold ? sfx.gold : sfx.twinkle)();
-        return;
-      }
+    const p = handTouching(players, s.x, s.y, s.r, CATCH_SLACK * u);
+    if (p) {
+      s.dead = true;
+      const gold = s.kind === 'gold';
+      g.score(p, gold ? GOLD_POINTS : 1, s.x, s.y);
+      g.burst(s.x, s.y, gold ? '#ffd24d' : '#fff6b0', gold ? 24 : 12);
+      (gold ? sfx.gold : sfx.twinkle)();
+      return;
     }
     if (s.y > g.H + s.r * 2) s.dead = true; // missed stars just drift away
   },
@@ -147,21 +145,13 @@ const meteor = {
       return; // a warning can't hurt
     }
     m.y += m.vy * dt;
-    // Only body circles count; hands touching a meteor do nothing.
-    if (this.invul <= 0) {
-      for (const p of players) {
-        if (p.circles.some((c) => Math.hypot(c.x - m.x, c.y - m.y) < m.r + c.r * BODY_FACTOR)) {
-          m.dead = true;
-          this.invul = INVUL_TIME;
-          p.hitUntil = g.now + 0.8;
-          g.team.hearts--;
-          g.burst(m.x, m.y, '#ff5a3a', 24);
-          sfx.bonk();
-          g.miss();
-          if (g.team.hearts <= 0) g.endLevel('Oh no, out of hearts! Try again!');
-          return;
-        }
-      }
+    // Only body circles count (at 80%, like the rocks); hands touching a meteor do nothing.
+    const hit = this.invul <= 0 && bodyHit(players, m.x, m.y, m.r);
+    if (hit) {
+      m.dead = true;
+      this.invul = INVUL_TIME;
+      loseHeart(g, hit, m.x, m.y);
+      return;
     }
     if (m.y > g.H + m.r) {
       m.dead = true;
