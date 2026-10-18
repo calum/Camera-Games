@@ -23,10 +23,10 @@ export function findBrowser() {
   return candidates.find((p) => p && fs.existsSync(p)) || null;
 }
 
-export async function startServer() {
-  const server = createGameServer();
+export async function startServer({ base = '/' } = {}) {
+  const server = createGameServer({ base });
   await new Promise((r) => server.listen(0, '127.0.0.1', r));
-  return { server, url: `http://localhost:${server.address().port}/` };
+  return { server, url: `http://localhost:${server.address().port}${base}` };
 }
 
 // Turn a still photo into a looping fake-webcam video (.y4m) so Chrome/Edge "see" a person.
@@ -83,6 +83,8 @@ export function launch(executablePath, extraArgs = []) {
     headless: 'new',
     args: [
       '--use-fake-ui-for-media-stream',
+      // containers and CI runners often run as root, where Chrome refuses to start with its sandbox on
+      ...(process.getuid?.() === 0 ? ['--no-sandbox'] : []),
       // the plain flag, unless the test supplies its own form of it (e.g. =device-count=3)
       ...(extraArgs.some((a) => a.startsWith('--use-fake-device-for-media-stream')) ? [] : ['--use-fake-device-for-media-stream']),
       ...extraArgs,

@@ -7,10 +7,12 @@
   "scripts": {
     "start": "node server.mjs",
     "test": "node --test \"test/unit/*.test.js\"",
-    "test:e2e": "node --test --test-concurrency=1 --test-timeout=240000 \"test/e2e/*.test.js\"",
-    "test:all": "npm test && npm run test:e2e"
+    "typecheck": "tsc -p jsconfig.json",
+    "test:e2e": "node --test --test-concurrency=1 --test-timeout=900000 \"test/e2e/*.test.js\"",
+    "test:all": "npm run typecheck && npm test && npm run test:e2e"
   },
   "devDependencies": {
-    "puppeteer-core": "^25.14.0"
+    "puppeteer-core": "^25.14.0",
+    "typescript": "^7.0.2"
   }
 }

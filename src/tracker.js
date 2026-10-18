@@ -6,21 +6,29 @@
 // Levels only ever read those fields, so any tracker (camera, mouse, a different
 // model, a Pi build) can be swapped in without touching the game.
 
+/** @import { Player, Point } from './types.js' */
 import { OneEuro } from './filter.js';
 import { cameraConstraints, nextCameraId, describeCamera, saveCamera, parseMode, withRetry, FpsGuard } from './camera.js';
 import { downsampleMaxInto } from './person-mask.js';
+import { People, COLORS } from './people.js';
+import { lookOf } from './look.js';
+
+export { COLORS };
 
 export const BONES = [
   [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
   [11, 23], [12, 24], [23, 24], [23, 25], [25, 27], [24, 26], [26, 28],
 ];
 
-export const COLORS = ['#ff4d6d', '#4dd0ff', '#ffd24d', '#7dff6b', '#c77dff', '#ff9a3d'];
-
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
 
-// Derive everything the game needs from the 33 screen-space landmarks in p.px.
+/**
+ * Derive everything the game needs from the 33 screen-space landmarks in p.px.
+ * @param {any} p  a Player (or anything with px[33]; the tests pass bare objects)
+ * @param {number} now
+ * @param {{ skipJump?: boolean }} [opts]
+ */
 export function computeFeatures(p, now, { skipJump = false } = {}) {
   const px = p.px;
   const sh = mid(px[11], px[12]);
@@ -101,32 +109,179 @@ export function computeFeatures(p, now, { skipJump = false } = {}) {
   p.pose = { ...p.poseState };
 }
 
-function newPlayer(id, slot) {
-  return {
-    id,
-    slot,
-    color: COLORS[slot % COLORS.length],
-    px: null,
-    present: true,
-    seen: 0,
-    score: 0,
-    jumps: 0,
-    lastJump: -99,
-    wasJump: false,
-    pose: {},
-    hitUntil: 0,
-  };
+// If tracking averages slower than this per frame, step down the quality ladder (see QUALITY and _watchSpeed).
+const SLOW_MS = 50;
+// ...and if it averages faster than this for a long while, step back up.
+const FAST_MS = 18;
+
+// The quality ladder, best first. Each step is cheaper than the one before:
+//   model:  'full' is noticeably better on children; 'lite' is about twice as fast
+//   scale:  the camera frame is shrunk by this before tracking (landmarks are normalised, so nothing else changes)
+//   masks:  the person silhouettes for the cut-out cost ~6-9 ms a frame; without them the cut-out runs on motion alone
+export const QUALITY = [
+  { name: 'high', model: 'full', scale: 1, masks: true },
+  { name: 'medium', model: 'lite', scale: 1, masks: true },
+  { name: 'low', model: 'lite', scale: 0.5, masks: true },
+  { name: 'lowest', model: 'lite', scale: 0.5, masks: false },
+];
+const MASK_W = 256;
+const LOOK_W = 96;
+
+const assetUrl = (/** @type {string} */ rel) => new URL(rel, import.meta.url).href;
+
+// Runs the pose model on the main thread. Simple, and the fallback when workers are not available, but
+// the game can't draw while a frame is being tracked.
+class MainThreadEngine {
+  constructor() {
+    this.landmarker = null;
+    this.delegate = '?';
+    this.look = document.createElement('canvas');
+    this.look.width = LOOK_W;
+    this.look.height = 54;
+    this.lctx = this.look.getContext('2d', { willReadFrequently: true });
+    /** @type {HTMLCanvasElement | null} the frame shrunk for the cheaper ladder rungs */
+    this.small = null;
+    this._make = null;
+  }
+
+  async init({ model, masks }) {
+    const { FilesetResolver, PoseLandmarker } = await import(assetUrl('../vendor/vision_bundle.mjs'));
+    const fileset = await FilesetResolver.forVisionTasks(assetUrl('../vendor/wasm'));
+    // Confidence thresholds are lower than the defaults (0.5): kids are less common in the model's
+    // training data, so it is less sure about them and would otherwise drop them for a few frames.
+    this._make = (delegate, name, withMasks) =>
+      PoseLandmarker.createFromOptions(fileset, {
+        baseOptions: { modelAssetPath: assetUrl(`../models/pose_landmarker_${name}.task`), delegate },
+        runningMode: 'VIDEO',
+        numPoses: 4,
+        outputSegmentationMasks: withMasks,
+        minPoseDetectionConfidence: 0.35,
+        minPosePresenceConfidence: 0.35,
+        minTrackingConfidence: 0.35,
+      });
+    try {
+      this.landmarker = await this._make('GPU', model, masks);
+      this.delegate = 'GPU';
+    } catch (e) {
+      console.warn('GPU delegate unavailable, using CPU', e);
+      this.landmarker = await this._make('CPU', model, masks);
+      this.delegate = 'CPU';
+    }
+    return { delegate: this.delegate };
+  }
+
+  async setModel({ model, masks }) {
+    const next = await this._make(this.delegate, model, masks);
+    this.landmarker?.close?.();
+    this.landmarker = next;
+  }
+
+  async fallbackToCpu(model, masks) {
+    this.delegate = 'CPU';
+    this.landmarker = await this._make('CPU', model, masks);
+  }
+
+  // Resolves with { landmarks, looks, mask, maskW, maskH, ms } (same shape as the worker's answer).
+  async detect(video, ts, { scale, maskW }) {
+    const t0 = performance.now();
+    let source = video;
+    if (scale !== 1) {
+      this.small ??= document.createElement('canvas');
+      this.small.width = Math.round(video.videoWidth * scale);
+      this.small.height = Math.round(video.videoHeight * scale);
+      this.small.getContext('2d').drawImage(video, 0, 0, this.small.width, this.small.height);
+      source = this.small;
+    }
+    const res = this.landmarker.detectForVideo(source, ts);
+    const lh = Math.max(1, Math.round((LOOK_W * video.videoHeight) / video.videoWidth));
+    if (this.look.height !== lh) this.look.height = lh;
+    this.lctx.drawImage(video, 0, 0, LOOK_W, lh);
+    const rgba = this.lctx.getImageData(0, 0, LOOK_W, lh).data;
+    const looks = res.landmarks.map((lm) => lookOf(rgba, LOOK_W, lh, lm));
+    let mask = null;
+    let maskH = 0;
+    if (res.segmentationMasks?.length) {
+      maskH = Math.round((maskW * video.videoHeight) / video.videoWidth);
+      mask = new Float32Array(maskW * maskH);
+      for (const m of res.segmentationMasks) {
+        try {
+          downsampleMaxInto(m.getAsFloat32Array(), m.width, m.height, mask, maskW, maskH);
+        } finally {
+          m.close();
+        }
+      }
+    }
+    return { landmarks: res.landmarks, looks, mask, maskW, maskH, ms: performance.now() - t0 };
+  }
+
+  close() {
+    this.landmarker?.close?.();
+  }
 }
 
-// If the bigger model averages slower than this per frame, drop to the lite one (see _watchSpeed).
-const SLOW_MS = 50;
+// Runs the pose model in a Web Worker (src/pose-worker.js): the main thread only ships frames and draws.
+class WorkerEngine {
+  constructor() {
+    this.worker = new Worker(assetUrl('./pose-worker.js')); // classic: MediaPipe needs importScripts()
+    this.pending = new Map();
+    this.nextId = 1;
+    this.delegate = '?';
+    this.worker.onmessage = (e) => {
+      const { id, ok, result, error } = e.data;
+      const p = this.pending.get(id);
+      if (!p) return;
+      this.pending.delete(id);
+      ok ? p.resolve(result) : p.reject(new Error(error));
+    };
+    this.worker.onerror = (e) => {
+      for (const p of this.pending.values()) p.reject(new Error(e.message || 'pose worker failed'));
+      this.pending.clear();
+    };
+  }
+
+  _call(msg, transfer = []) {
+    const id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      this.pending.set(id, { resolve, reject });
+      this.worker.postMessage({ id, ...msg }, transfer);
+    });
+  }
+
+  async init({ model, masks }) {
+    const r = await this._call({ type: 'init', base: import.meta.url, model, masks });
+    this.delegate = r.delegate;
+    return r;
+  }
+
+  setModel({ model, masks }) {
+    return this._call({ type: 'model', model, masks });
+  }
+
+  fallbackToCpu() {
+    return Promise.reject(new Error('the worker picks its own delegate'));
+  }
+
+  async detect(video, ts, { scale, maskW }) {
+    const opts = scale === 1 ? {} : { resizeWidth: Math.round(video.videoWidth * scale), resizeHeight: Math.round(video.videoHeight * scale) };
+    const bitmap = await createImageBitmap(video, opts);
+    return this._call({ type: 'detect', bitmap, ts, maskW }, [bitmap]);
+  }
+
+  close() {
+    this.worker.terminate();
+  }
+}
 
 export class PoseTracker {
   // model: 'lite' | 'full'. Not given = start with the more accurate 'full' model (noticeably better
   // on children) and fall back to 'lite' automatically on a slow machine.
+  // quality: a QUALITY name. Pins the whole ladder (model, frame size, masks). Not given = start at
+  // `startQuality` and move up and down the ladder as the machine allows.
   // cameraMode: 'wide' | 'standard'. Not given = 'wide' (full field of view), dropping to 'standard' by itself
   // if the camera can't keep up.
-  constructor({ model, cameraMode, retryDelayMs = 250 } = {}) {
+  // worker: false runs the model on the main thread (also the fallback if a worker can't start).
+  /** @param {{ model?: string | null, quality?: string | null, startQuality?: string, cameraMode?: string | null, worker?: boolean, retryDelayMs?: number }} [opts] */
+  constructor({ model, quality, startQuality = 'high', cameraMode, worker = true, retryDelayMs = 250 } = {}) {
     this.retryDelayMs = retryDelayMs; // pause between retries when a camera is slow to let go (see camera.js)
     this.mode = parseMode(cameraMode) ?? 'wide';
     this.modePinned = parseMode(cameraMode) !== null;
@@ -139,29 +294,52 @@ export class PoseTracker {
     this.video = document.createElement('video');
     this.video.playsInline = true;
     this.video.muted = true;
+    this.people = new People();
+    /** @type {Player[]} the players the game sees this frame (present ones) */
     this.players = [];
-    this.nextId = 1;
     this.lastVideoTime = -1;
     this.detectMs = 0;
     this.delegate = '?';
-    this.landmarker = null;
-    this.pinned = model === 'lite' || model === 'full'; // explicit choice: never auto-switch
-    this.modelName = this.pinned ? model : 'full';
+    this.useWorker = worker && typeof Worker !== 'undefined' && typeof createImageBitmap !== 'undefined';
+    this.engine = null;
+    // the quality ladder (see QUALITY). ?model= pins the model only; ?quality= pins everything.
+    const pinnedModel = model === 'lite' || model === 'full' ? model : null;
+    this.pinned = !!pinnedModel; // explicit model choice: never auto-switch the model
+    this.qualityPinned = QUALITY.some((q) => q.name === quality);
+    let level = QUALITY.findIndex((q) => q.name === (this.qualityPinned ? quality : startQuality));
+    if (level < 0) level = 0;
+    if (pinnedModel) level = QUALITY.findIndex((q) => q.model === pinnedModel);
+    this.level = level;
     this.frames = 0;
     this.speedSum = 0;
+    this.fastFrames = 0;
     this.switching = false;
-    // The pose model also outputs a silhouette per person. We shrink them (all people OR-ed together)
-    // into one small array that the cut-out logic (person-mask.js) uses. null until the camera is up.
-    this.maskW = 256;
+    this.inflight = null;
+    this.latest = null;
+    this.failures = 0; // detections that failed in a row
+    this.simulateLost = false; // tests: pretend the model finds nobody
+    this.frameSeq = 0; // goes up by one with every tracked frame (the cut-out only redoes its work then)
+    // The pose model also outputs a silhouette per person. The engine shrinks them (all people OR-ed
+    // together) into one small array that the cut-out logic (person-mask.js) uses. null until the camera is up.
+    this.maskW = MASK_W;
     this.maskH = 192;
     this.maskLow = null;
     this.W = 1280;
     this.H = 720;
   }
 
+  get quality() {
+    return QUALITY[this.level];
+  }
+
+  get modelName() {
+    return this.quality.model;
+  }
+
   setView(W, H) {
     this.W = W;
     this.H = H;
+    this.people.setView(W);
   }
 
   // Where the (mirrored, cover-fitted) camera image sits on the canvas.
@@ -178,48 +356,59 @@ export class PoseTracker {
   }
 
   async init() {
-    const { FilesetResolver, PoseLandmarker } = await import('../vendor/vision_bundle.mjs');
-    const fileset = await FilesetResolver.forVisionTasks('/vendor/wasm');
-    // Confidence thresholds are lower than the defaults (0.5): kids are less common in the model's
-    // training data, so it is less sure about them and would otherwise drop them for a few frames.
-    const make = (delegate, name) =>
-      PoseLandmarker.createFromOptions(fileset, {
-        baseOptions: { modelAssetPath: `/models/pose_landmarker_${name}.task`, delegate },
-        runningMode: 'VIDEO',
-        numPoses: 4,
-        outputSegmentationMasks: true, // person silhouettes for the cut-out (~6-9ms extra per frame)
-        minPoseDetectionConfidence: 0.35,
-        minPosePresenceConfidence: 0.35,
-        minTrackingConfidence: 0.35,
-      });
-    this._make = make;
-    try {
-      this.landmarker = await make('GPU', this.modelName);
-      this.delegate = 'GPU';
-    } catch (e) {
-      console.warn('GPU delegate unavailable, using CPU', e);
-      this.landmarker = await make('CPU', this.modelName);
-      this.delegate = 'CPU';
+    const q = this.quality;
+    if (this.useWorker) {
+      try {
+        this.engine = new WorkerEngine();
+        await this.engine.init({ model: q.model, masks: q.masks });
+      } catch (e) {
+        console.warn('pose worker unavailable, tracking on the main thread', e);
+        this.engine?.close();
+        this.engine = null;
+        this.useWorker = false;
+      }
     }
+    if (!this.engine) {
+      this.engine = new MainThreadEngine();
+      await this.engine.init({ model: q.model, masks: q.masks });
+    }
+    this.delegate = this.engine.delegate;
   }
 
-  // After ~4s of tracking, if the full model is too slow for this machine, quietly swap to lite.
+  // Keeps an eye on how long tracking takes. After ~3 s of steady frames: too slow, step down the ladder
+  // (full -> lite model, then a smaller frame, then no silhouettes); comfortably fast for a long while,
+  // step back up. One step at a time, with the measurement restarted after each, so it can't oscillate.
   _watchSpeed(ms) {
     this.frames++;
-    if (this.frames > 30 && this.frames <= 120) this.speedSum += ms; // skip warm-up frames
-    if (this.frames === 120 && this.modelName === 'full' && !this.pinned && this.speedSum / 90 > SLOW_MS) {
-      console.warn(`full model averages ${(this.speedSum / 90).toFixed(0)}ms/frame, switching to lite`);
-      this._switchModel('lite');
-    }
+    if (this.frames <= 30) return; // warm-up frames are always slow
+    this.speedSum += ms;
+    this.fastFrames = ms < FAST_MS ? this.fastFrames + 1 : 0;
+    const n = this.frames - 30;
+    if (n >= 90 && this.speedSum / n > SLOW_MS && this.level < QUALITY.length - 1) {
+      console.warn(`tracking averages ${(this.speedSum / n).toFixed(0)}ms/frame, stepping down`);
+      this._setLevel(this.level + 1);
+    } else if (this.fastFrames >= 600 && this.level > 0) {
+      this._setLevel(this.level - 1);
+    } else return;
+    this.frames = 30;
+    this.speedSum = 0;
+    this.fastFrames = 0;
   }
 
-  async _switchModel(name) {
+  // Move to another rung of the ladder, unless the model or the whole ladder is pinned.
+  _setLevel(level) {
+    if (this.qualityPinned) return;
+    const from = this.quality;
+    const to = QUALITY[Math.max(0, Math.min(QUALITY.length - 1, level))];
+    if (this.pinned && to.model !== from.model) return;
+    this.level = QUALITY.indexOf(to);
+    if (to.model !== from.model || to.masks !== from.masks) this._switchModel(to.model, to.masks);
+  }
+
+  async _switchModel(name, masks = this.quality.masks) {
     this.switching = true;
     try {
-      const next = await this._make(this.delegate, name);
-      this.landmarker?.close?.();
-      this.landmarker = next;
-      this.modelName = name;
+      await this.engine.setModel({ model: name, masks });
     } catch (e) {
       console.error('model switch failed', e);
     } finally {
@@ -241,23 +430,25 @@ export class PoseTracker {
     return run;
   }
 
-  async _startCamera({ deviceId = null, mode = this.mode } = {}) {
+  async _startCamera({ deviceId = null, mode = this.mode, facingMode = 'user' } = {}) {
     this.stopCamera();
     let stream;
     try {
-      stream = await this._getStream(cameraConstraints({ deviceId, mode }));
+      stream = await this._getStream(cameraConstraints({ deviceId, mode, facingMode }));
     } catch (e) {
       if (!deviceId) throw e;
       console.warn('that camera is unavailable, using the default one', e);
-      stream = await this._getStream(cameraConstraints({ mode }));
+      stream = await this._getStream(cameraConstraints({ mode, facingMode }));
     }
     const track = stream.getVideoTracks()[0];
     this.mode = mode;
+    this.facingMode = track?.getSettings?.().facingMode || facingMode;
     this.deviceId = track?.getSettings?.().deviceId ?? deviceId;
     this.cameraLabel = track?.label || 'camera';
     this.video.srcObject = stream;
     await this.video.play();
     // a new picture: forget the old kids and masks (the size may differ)
+    this.people.reset();
     this.players = [];
     this.maskLow = null;
     this.lastVideoTime = -1;
@@ -270,7 +461,8 @@ export class PoseTracker {
   }
 
   stopCamera() {
-    this.video.srcObject?.getTracks().forEach((t) => t.stop());
+    const stream = /** @type {MediaStream | null} */ (this.video.srcObject);
+    stream?.getTracks().forEach((t) => t.stop());
     this.fpsGuard = null;
   }
 
@@ -357,94 +549,90 @@ export class PoseTracker {
     return this.video.videoHeight > this.video.videoWidth && this.video.videoWidth > 0;
   }
 
+  // Called every drawn frame. Tracking runs at its own pace: a new camera frame is sent off whenever the
+  // previous one has been answered, and whatever answer arrived since last time is applied. With the worker
+  // engine the game keeps drawing while a frame is tracked; on the main thread this blocks as before.
   update(now) {
     const v = this.video;
-    if (this.landmarker && !this.switching && v.readyState >= 2 && v.currentTime !== this.lastVideoTime) {
+    if (this.engine && !this.switching && !this.inflight && v.readyState >= 2 && v.currentTime !== this.lastVideoTime) {
       this.lastVideoTime = v.currentTime;
-      const t0 = performance.now();
-      let res = null;
-      try {
-        res = this.landmarker.detectForVideo(v, t0);
-      } catch (e) {
-        console.error('detect failed', e);
-        if (this.delegate === 'GPU') this._fallbackToCpu();
-      }
-      const ms = performance.now() - t0;
-      this.detectMs = this.detectMs * 0.9 + ms * 0.1;
-      this._watchSpeed(ms);
-      if (res) {
-        this._readMasks(res);
-        this._ingest(res.landmarks, now);
-      }
+      const q = this.quality;
+      this.inflight = this.engine
+        .detect(v, performance.now(), { scale: q.scale, maskW: this.maskW })
+        .then((res) => {
+          if (res) this.latest = res;
+          this.failures = 0;
+        })
+        .catch((e) => {
+          console.error('detect failed', e);
+          this.failures = (this.failures ?? 0) + 1;
+          if (this.useWorker && this.failures >= 3) this._leaveWorker();
+          else if (this.delegate === 'GPU' && !this.useWorker) this._fallbackToCpu();
+        })
+        .finally(() => (this.inflight = null));
     }
-    // A kid stays "present" through brief tracking dropouts (0.6s) so a glitch doesn't remove them
-    // from the game; their player record (colour, score, pose progress) is kept for 1.5s.
-    this.players = this.players.filter((p) => now - p.seen < 1.5);
-    for (const p of this.players) p.present = now - p.seen < 0.6;
+    if (this.latest) {
+      const res = this.latest;
+      this.latest = null;
+      this.detectMs = this.detectMs * 0.9 + res.ms * 0.1;
+      this._watchSpeed(res.ms);
+      if (this.simulateLost) this._apply({ landmarks: [], looks: [], mask: null, maskW: res.maskW, maskH: res.maskH }, now);
+      else this._apply(res, now);
+    }
+    this.players = this.people.tick(now);
     return this.players;
   }
 
-  // Copy this frame's person silhouettes into maskLow (small, all people merged) and release them.
-  _readMasks(res) {
-    const vw = this.video.videoWidth;
-    const vh = this.video.videoHeight;
-    if (!vw) return;
-    const h = Math.round((this.maskW * vh) / vw);
-    if (!this.maskLow || this.maskH !== h) {
-      this.maskH = h;
-      this.maskLow = new Float32Array(this.maskW * h);
+  _apply(res, now) {
+    this.frameSeq++;
+    // the merged silhouettes: keep the array when the model found nobody so the cut-out can fade them out
+    if (res.mask) {
+      this.maskLow = res.mask;
+      this.maskH = res.maskH;
+    } else if (this.maskLow && this.maskLow.length === this.maskW * this.maskH) this.maskLow.fill(0);
+    else if (this.video.videoWidth) {
+      this.maskH = Math.round((this.maskW * this.video.videoHeight) / this.video.videoWidth);
+      this.maskLow = new Float32Array(this.maskW * this.maskH);
     }
-    this.maskLow.fill(0);
-    for (const m of res.segmentationMasks || []) {
-      try {
-        downsampleMaxInto(m.getAsFloat32Array(), m.width, m.height, this.maskLow, this.maskW, this.maskH);
-      } finally {
-        m.close();
-      }
+    this._ingest(res.landmarks, res.looks || [], now);
+  }
+
+  // The worker keeps failing (a crashed GPU context, a browser quirk): carry on tracking on the main thread.
+  async _leaveWorker() {
+    console.warn('pose worker keeps failing, tracking on the main thread');
+    this.switching = true;
+    try {
+      this.engine.close();
+      this.useWorker = false;
+      const engine = new MainThreadEngine();
+      await engine.init({ model: this.quality.model, masks: this.quality.masks });
+      this.engine = engine;
+      this.delegate = engine.delegate;
+      this.failures = 0;
+    } catch (e) {
+      console.error('could not start tracking on the main thread either', e);
+    } finally {
+      this.switching = false;
     }
   }
 
   async _fallbackToCpu() {
     this.delegate = 'CPU';
     try {
-      this.landmarker = await this._make('CPU', this.modelName);
+      await this.engine.fallbackToCpu(this.quality.model, this.quality.masks);
     } catch (e) {
       console.error(e);
     }
   }
 
-  _ingest(all, now) {
+  _ingest(all, looks, now) {
     const dets = [];
-    for (const lm of all) {
-      if ((lm[11].visibility + lm[12].visibility) / 2 < 0.3) continue;
+    all.forEach((lm, i) => {
+      if ((lm[11].visibility + lm[12].visibility) / 2 < 0.3) return;
       const px = lm.map((l) => this.map(l.x, l.y));
-      dets.push({ px, vis: lm.map((l) => l.visibility), cx: (px[11].x + px[12].x) / 2 });
-    }
-    dets.sort((a, b) => a.cx - b.cx);
-
-    const free = new Set(this.players);
-    for (const d of dets) {
-      // Match to the closest known player so each kid keeps their colour.
-      let best = null;
-      let bd = Infinity;
-      for (const p of free) {
-        const dd = Math.abs(p.cx - d.cx);
-        if (dd < bd) {
-          bd = dd;
-          best = p;
-        }
-      }
-      let p;
-      if (best && bd < this.W * 0.3) {
-        p = best;
-        free.delete(p);
-      } else {
-        const used = new Set(this.players.map((q) => q.slot));
-        let slot = 0;
-        while (used.has(slot)) slot++;
-        p = newPlayer(this.nextId++, slot);
-        this.players.push(p);
-      }
+      dets.push({ px, vis: lm.map((l) => l.visibility), look: looks[i] ?? null });
+    });
+    for (const [p, d] of this.people.match(dets, now)) {
       // Steady the skeleton: heavy smoothing on joints that are nearly still (kills jitter), light on
       // fast ones (keeps waving and jumping instant). Joints the model is unsure about (hidden or
       // blurry, e.g. a small kid's hips) hold their last position instead of jumping around.
@@ -452,8 +640,6 @@ export class PoseTracker {
       p.px = d.px.map((n, i) =>
         p.px && d.vis[i] < 0.25 ? p.px[i] : { x: p.filters[i].x.filter(n.x, now), y: p.filters[i].y.filter(n.y, now) },
       );
-      p.seen = now;
-      p.present = true;
       computeFeatures(p, now);
     }
   }
@@ -469,7 +655,7 @@ export class MouseTracker {
     this.pos = { x: 640, y: 300 };
     this.down = false;
     this.keys = new Set();
-    this.player = newPlayer(1, 0);
+    this.player = /** @type {Player} */ ({ id: 1, slot: 0, color: COLORS[0], px: null, present: true, seen: 0, score: 0, jumps: 0, lastJump: -99, hitUntil: 0, pose: {}, hands: [], circles: [], sh: { x: 0, y: 0 }, hip: { x: 0, y: 0 }, cx: 0, shoulderW: 0, torso: 0 });
     this.detectMs = 0;
     this.delegate = 'mouse';
     canvas.addEventListener('pointermove', (e) => {

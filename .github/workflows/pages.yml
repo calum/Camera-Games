@@ -1,0 +1,58 @@
+# Checks every pull request (types + unit tests) and publishes main to GitHub Pages:
+#   https://calum.github.io/kids-camera-games/
+# One-time setup: repository Settings > Pages > Build and deployment > Source: "GitHub Actions".
+# The browser tests (npm run test:e2e) need a real Chrome and about 10 minutes, so they run locally.
+name: Check and publish
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          PUPPETEER_SKIP_DOWNLOAD: '1'
+      - run: npm run typecheck
+      - run: npm test
+
+  publish:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      # only what the game needs at run time: no tests, no node_modules, no docs
+      - name: Collect the site
+        run: |
+          mkdir _site
+          cp -r index.html manifest.webmanifest sw.js icons src vendor models assets _site/
+          touch _site/.nojekyll
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

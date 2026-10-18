@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findBrowser, startServer, makeFakeWebcamFile, launch, openGame, openWithCameras, waitForState, wait } from './helpers.js';
+import { createGameServer } from '../../server.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const photo = path.join(here, '..', 'fixtures', 'pose.jpg'); // man with arms straight out = "airplane"
@@ -288,18 +289,18 @@ test('CUT-OUT: a pose-tracking glitch fades the kid out gently instead of poppin
     await page.waitForFunction(() => window.__game.cutoutReady && window.__game.cutout.stats.coverage > 0.02, { timeout: 15000 });
     await wait(1500);
 
-    // make the pose model "lose" everyone on demand
+    // make the pose model "lose" everyone on demand (the tracker's test switch: answers arrive, but empty)
     await page.evaluate(() => {
-      const lm = window.__game.tracker.landmarker;
-      const real = lm.detectForVideo.bind(lm);
-      window.__lost = false;
-      lm.detectForVideo = (v, t) => (window.__lost ? { landmarks: [], worldLandmarks: [], segmentationMasks: [] } : real(v, t));
+      Object.defineProperty(window, '__lost', { set: (v) => (window.__game.tracker.simulateLost = v), get: () => window.__game.tracker.simulateLost, configurable: true });
     });
     const coverage = () => page.evaluate(() => window.__game.cutout.stats.coverage);
     const before = await coverage();
     assert.ok(before > 0.02, `kid shown before the glitch (${before})`);
 
-    await page.evaluate(() => (window.__lost = true));
+    // tracking runs at its own pace (slowly in a software-rendered test browser), so start the clock when
+    // the first empty answer has really come back from the model
+    const seq = await page.evaluate(() => ((window.__lost = true), window.__game.tracker.frameSeq));
+    await page.waitForFunction((s) => window.__game.tracker.frameSeq > s, { timeout: 10000 }, seq);
     await wait(250);
     const early = await coverage();
     assert.ok(early > before * 0.6, `0.25s after losing the pose the kid is still there (${early.toFixed(3)} vs ${before.toFixed(3)})`);
@@ -557,15 +558,17 @@ test('ON-SCREEN TEXT: every string the game paints is intact, in the menu, all f
   }
 });
 
-test('MOUSE MODE: every level can be started and played without errors', { skip }, async () => {
+test('MOUSE MODE: every level in the list can be started (keys 1-9) and played without errors', { skip }, async () => {
   const browser = await launch(exe);
   try {
     const { page, problems } = await openGame(browser, url + '?mouse');
     await waitForState(page, 'menu', 20000);
     await page.mouse.move(640, 300);
 
-    for (const [key, id] of [['1', 'bubbles'], ['2', 'dodge'], ['3', 'jump'], ['4', 'dance']]) {
-      await page.keyboard.press(key);
+    const ids = await page.evaluate(() => window.__game.levels.map((l) => l.id));
+    assert.ok(ids.length >= 4, `levels: ${ids}`);
+    for (const [i, id] of ids.slice(0, 9).entries()) {
+      await page.keyboard.press(String(i + 1));
       await waitForState(page, 'play', 8000);
       assert.equal(await page.evaluate(() => window.__game.g.level.id), id);
       for (let i = 0; i < 20; i++) {
@@ -788,13 +791,174 @@ test('JOINING: a kid who does not put their arms out is left out of the game (no
 test('FALLBACK: with no camera available the game still starts, in mouse mode, with a notice', { skip }, async () => {
   // Deny camera access by not passing the fake-device flags.
   const puppeteer = (await import('puppeteer-core')).default;
-  const browser = await puppeteer.launch({ executablePath: exe, headless: 'new', args: ['--deny-permission-prompts'], defaultViewport: { width: 1280, height: 720 } });
+  const browser = await puppeteer.launch({ executablePath: exe, headless: 'new', args: ['--deny-permission-prompts', ...(process.getuid?.() === 0 ? ['--no-sandbox'] : [])], defaultViewport: { width: 1280, height: 720 } });
   try {
     const { page } = await openGame(browser, url);
     await waitForState(page, 'menu', 60000);
     const notice = await page.evaluate(() => window.__game.g.notice);
     assert.match(notice, /No camera/);
     assert.equal(await page.evaluate(() => window.__game.tracker.delegate), 'mouse');
+  } finally {
+    await browser.close();
+  }
+});
+
+test('SMOOTH DRAWING: the pose model runs in a worker, so the game keeps drawing while a frame is tracked', { skip }, async () => {
+  const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
+  try {
+    const { page, problems } = await openGame(browser, url + '?model=full');
+    await waitForState(page, 'menu', 60000);
+    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 30000 });
+    const info = await page.evaluate(async () => {
+      const t = window.__game.tracker;
+      // count drawn frames and tracked frames over 3 s
+      const f0 = t.frameSeq;
+      let drawn = 0;
+      const t0 = performance.now();
+      await new Promise((resolve) => {
+        const tick = () => (++drawn, performance.now() - t0 < 3000 ? requestAnimationFrame(tick) : resolve());
+        requestAnimationFrame(tick);
+      });
+      return { worker: t.useWorker, tracked: t.frameSeq - f0, drawn, airplane: t.players[0]?.pose.airplane };
+    });
+    assert.equal(info.worker, true, 'tracking runs in a Web Worker');
+    assert.ok(info.tracked >= 1, `frames are being tracked (${info.tracked})`);
+    assert.ok(info.drawn > info.tracked * 3, `the game draws more often than it tracks (${info.drawn} drawn, ${info.tracked} tracked)`);
+    assert.equal(info.airplane, true, 'and the pose is still recognised');
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('MAIN-THREAD FALLBACK: with ?worker=off the pose model runs on the main thread and still finds the person', { skip }, async () => {
+  const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
+  try {
+    const { page, problems } = await openGame(browser, url + '?worker=off&model=full');
+    await waitForState(page, 'menu', 60000);
+    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present && p.pose.airplane), { timeout: 30000 });
+    assert.equal(await page.evaluate(() => window.__game.tracker.useWorker), false);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('GITHUB PAGES: the game works from a sub-folder (every file is asked for relative to the page)', { skip }, async () => {
+  const sub = createGameServer({ base: '/kids-camera-games/' });
+  await new Promise((r) => sub.listen(0, '127.0.0.1', r));
+  const subUrl = `http://localhost:${sub.address().port}/kids-camera-games/`;
+  const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
+  try {
+    const { page, problems } = await openGame(browser, subUrl + '?model=full');
+    const outside = [];
+    page.on('request', (r) => {
+      const u = new URL(r.url());
+      if (u.protocol.startsWith('http') && !u.pathname.startsWith('/kids-camera-games/')) outside.push(u.pathname);
+    });
+    await waitForState(page, 'menu', 60000);
+    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 30000 });
+    assert.equal(await page.evaluate(() => window.__game.g.notice), '', 'the camera path was used, not the mouse fallback');
+    assert.deepEqual(outside, [], 'nothing was requested from outside the game folder');
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+    sub.close();
+  }
+});
+
+test('TOUCH: tapping the screen shows the grown-up buttons; Start starts the game; they hide again', { skip }, async () => {
+  const browser = await launch(exe);
+  try {
+    const { page, problems } = await openGame(browser, url + '?mouse');
+    await waitForState(page, 'menu', 20000);
+    const shown = () => page.evaluate(() => document.getElementById('controls').classList.contains('shown'));
+    assert.equal(await shown(), false, 'hidden while nobody touches the screen');
+    await page.touchscreen.tap(640, 300);
+    await wait(100);
+    assert.equal(await shown(), true, 'a tap shows them');
+    const visible = await page.evaluate(() => [...document.querySelectorAll('#controls button')].filter((b) => !b.hidden).map((b) => b.dataset.action));
+    assert.ok(visible.includes('start') && visible.includes('fullscreen'), `menu buttons: ${visible}`);
+    await page.tap('#controls button[data-action="start"]');
+    await waitForState(page, 'intro', 3000);
+    const during = await page.evaluate(() => [...document.querySelectorAll('#controls button')].filter((b) => !b.hidden).map((b) => b.dataset.action));
+    assert.ok(during.includes('next') && during.includes('menu') && !during.includes('start'), `in-game buttons: ${during}`);
+    await page.tap('#controls button[data-action="next"]');
+    await page.waitForFunction(() => window.__game.g.level.id === 'dodge', { timeout: 3000 });
+    await page.waitForFunction(() => !document.getElementById('controls').classList.contains('shown'), { timeout: 8000 });
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('WALKING PAST: someone who appears mid-game only watches, until they hold their arms out to join', { skip }, async () => {
+  const browser = await launch(exe);
+  try {
+    const { page, problems } = await openGame(browser, url + '?mouse');
+    await waitForState(page, 'menu', 20000);
+    await page.mouse.move(300, 300);
+    await page.keyboard.press('Space');
+    await waitForState(page, 'intro', 3000);
+
+    // a grown-up walks into view: the tracker reports a brand-new person (isNew, as people.js does)
+    await page.evaluate(async () => {
+      const { computeFeatures } = await import('./src/tracker.js');
+      const t = window.__game.tracker;
+      const orig = t.update.bind(t);
+      const cx = 1000;
+      const px = Array.from({ length: 33 }, () => ({ x: cx, y: 360 }));
+      const set = (i, x, y) => (px[i] = { x, y });
+      set(0, cx, 130); set(11, cx - 40, 200); set(12, cx + 40, 200);
+      set(23, cx - 30, 335); set(24, cx + 30, 335); set(25, cx - 30, 470); set(26, cx + 30, 470);
+      set(15, cx - 50, 300); set(16, cx + 50, 300); set(19, cx - 50, 310); set(20, cx + 50, 310);
+      const walker = { id: 77, color: '#ffffff', score: 0, jumps: 0, lastJump: -99, hitUntil: 0, pose: {}, px, isNew: true };
+      window.__armsOut = false;
+      t.update = (now) => {
+        const ps = orig(now);
+        walker.seen = now;
+        walker.present = true;
+        computeFeatures(walker, now, { skipJump: true });
+        walker.pose = { armsUp: false, airplane: window.__armsOut, handsHead: false };
+        return [...ps, walker];
+      };
+      window.__walker = walker;
+    });
+    await wait(500);
+    assert.equal(await page.evaluate(() => window.__walker.excluded), true, 'the walker only watches');
+    assert.deepEqual(await page.evaluate(() => window.__game.g.activePlayers().map((p) => p.id)), [1]);
+
+    await page.evaluate(() => (window.__armsOut = true));
+    await page.waitForFunction(() => window.__walker.excluded === false, { timeout: 6000 });
+    assert.match(await page.evaluate(() => window.__game.g.toast?.text ?? ''), /joined/);
+    assert.equal(await page.evaluate(() => window.__game.g.activePlayers().length), 2, 'they joined by holding their arms out');
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('FULL SCREEN NOTE: when the game is not full screen the menu suggests it, with a button that does it', { skip }, async () => {
+  const browser = await launch(exe);
+  try {
+    const { page, problems } = await openGame(browser, url + '?mouse');
+    await waitForState(page, 'menu', 20000);
+    const nudge = () => page.evaluate(() => {
+      const el = document.getElementById('fullscreen-nudge');
+      return { shown: !el.hidden, text: el.textContent, full: !!document.fullscreenElement };
+    });
+    await page.waitForFunction(() => !document.getElementById('fullscreen-nudge').hidden, { timeout: 3000 });
+    assert.match((await nudge()).text, /Full screen works best/);
+    await page.click('#fullscreen-nudge button[data-action="fullscreen"]');
+    await page.waitForFunction(() => !!document.fullscreenElement, { timeout: 3000 });
+    await page.waitForFunction(() => document.getElementById('fullscreen-nudge').hidden, { timeout: 3000 });
+
+    await page.evaluate(() => document.exitFullscreen());
+    await page.waitForFunction(() => !document.getElementById('fullscreen-nudge').hidden, { timeout: 3000 });
+    await page.keyboard.press('Space'); // not shown during play: it would only distract
+    await waitForState(page, 'intro', 3000);
+    await page.waitForFunction(() => document.getElementById('fullscreen-nudge').hidden, { timeout: 3000 });
+    assert.deepEqual(problems, []);
   } finally {
     await browser.close();
   }

@@ -1,18 +1,27 @@
+/** @import { Game, Player } from './types.js' */
 import { PoseTracker, MouseTracker } from './tracker.js';
-import { LEVELS } from './levels.js';
+import { LEVELS } from './levels/index.js';
 import { sfx, unlock } from './audio.js';
-import { loadArt, drawArt } from './art.js';
+import { loadArt, drawArt, registerArt } from './art.js';
 import { text, drawSkeleton, drawHeart } from './draw.js';
-import { Lobby } from './lobby.js';
+import { Lobby, lateJoin } from './lobby.js';
 import { Cutout } from './cutout.js';
 import { Backdrops } from './backdrops.js';
 import { loadSavedCamera } from './camera.js';
+import { defaultSettings } from './device.js';
+import { createControls } from './controls.js';
 
-const canvas = document.getElementById('c');
+const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
 const ctx = canvas.getContext('2d');
 const params = new URLSearchParams(location.search);
+const settings = defaultSettings(params, navigator);
+// The canvas is drawn at most at 1080p and scaled up by the browser: a 4K TV would otherwise mean four
+// times the pixels to fill every frame for no visible gain from the sofa.
+const MAX_W = 1920;
+const MAX_H = 1080;
 
 // ------------------------------------------------------------------ shared game object
+/** @type {Game & Record<string, any>} */
 const g = {
   W: 1280,
   H: 720,
@@ -24,7 +33,7 @@ const g = {
   round: 0,
   diff: 1,
   debug: params.has('debug'),
-  fx: !params.has('lite'), // ?lite turns off glow effects for slow machines
+  fx: settings.fx, // glow effects: off with ?lite, on phones, or when drawing gets slow (see watchFrameRate)
   // What the kids are shown against: 'cutout' = just the kids, cut out and placed in a cartoon world;
   // 'camera' = the whole camera picture. Key B switches (handy if the cut-out ever misbehaves).
   view: params.get('view') === 'camera' ? 'camera' : 'cutout',
@@ -77,8 +86,11 @@ function setState(s) {
   stateT = 0;
 }
 
+// Everyone the tracker knows, including kids who are briefly out of view (so they keep their place).
+const everyone = () => /** @type {Player[]} */ (tracker?.people?.players ?? g.players);
+
 function toMenu() {
-  for (const p of g.players) p.excluded = false;
+  for (const p of everyone()) p.excluded = false;
   lobby.reset();
   setState('menu');
 }
@@ -98,7 +110,7 @@ function startGame(joinedIds = null) {
   g.team.score = 0;
   g.round = 0;
   g.diff = 1;
-  for (const p of g.players) {
+  for (const p of everyone()) {
     p.score = 0;
     p.excluded = joinedIds ? !joinedIds.includes(p.id) : false;
   }
@@ -116,8 +128,9 @@ function nextLevel() {
 
 // ------------------------------------------------------------------ setup
 function resize() {
-  canvas.width = window.innerWidth;
-  canvas.height = window.innerHeight;
+  const s = Math.min(1, MAX_W / window.innerWidth, MAX_H / window.innerHeight);
+  canvas.width = Math.round(window.innerWidth * s);
+  canvas.height = Math.round(window.innerHeight * s);
   g.W = canvas.width;
   g.H = canvas.height;
   g.u = g.H / 1080;
@@ -134,16 +147,25 @@ function useMouse() {
 }
 
 async function boot() {
+  for (const level of LEVELS) if (level.art) registerArt(level.art);
   loadArt();
   resize();
   if (params.has('mouse')) {
     useMouse();
     setState('menu');
+    jumpToLevelFromUrl();
     return;
   }
   try {
-    // ?model=lite|full forces a pose model; ?cam=wide|standard forces the picture size
-    pose = new PoseTracker({ model: params.get('model'), cameraMode: params.get('cam') });
+    // ?model=lite|full forces a pose model, ?quality=high|medium|low|lowest pins the whole tracking ladder,
+    // ?cam=wide|standard forces the picture size, ?worker=off tracks on the main thread
+    pose = new PoseTracker({
+      model: params.get('model'),
+      quality: params.get('quality'),
+      startQuality: settings.startQuality,
+      cameraMode: params.get('cam'),
+      worker: settings.worker,
+    });
     status = 'Waking up the pose detector...';
     await pose.init();
     status = 'Starting the camera... (click Allow)';
@@ -158,6 +180,15 @@ async function boot() {
     useMouse();
     setState('menu');
   }
+  jumpToLevelFromUrl();
+}
+
+// ?level=<id> starts straight in that level: handy while making or tuning a level (see docs/ADDING-GAMES.md).
+function jumpToLevelFromUrl() {
+  const id = params.get('level');
+  const i = LEVELS.findIndex((l) => l.id === id);
+  if (i >= 0) startLevel(i);
+  else if (id) g.notice = `No level called "${id}". Levels: ${LEVELS.map((l) => l.id).join(', ')}`;
 }
 
 function toast(text, secs = 3.5) {
@@ -181,25 +212,44 @@ async function switchCamera() {
 
 window.addEventListener('resize', resize);
 
-window.addEventListener('keydown', (e) => {
-  unlock();
-  const k = e.key.toLowerCase();
-  if (k === ' ' || k === 'enter') {
+// What the grown-up can do. Keys and the on-screen buttons (controls.js) both call these.
+const actions = {
+  start() {
     if (state === 'menu') startGame();
     else if (state === 'finale') {
       g.round++;
       g.diff = 1 + 0.25 * g.round;
       startLevel(0);
     }
+  },
+  next() {
+    if (g.level && state !== 'menu' && state !== 'loading') nextLevel();
+  },
+  menu() {
+    if (state !== 'loading') toMenu();
+  },
+  fullscreen() {
+    document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.();
+  },
+  camera() {
+    if (pose && tracker === pose) switchCamera();
+  },
+};
+
+window.addEventListener('keydown', (e) => {
+  unlock();
+  const k = e.key.toLowerCase();
+  if (k === ' ' || k === 'enter') {
+    actions.start();
     e.preventDefault();
-  } else if (k === 'n' && g.level && state !== 'menu') nextLevel();
-  else if (k >= '1' && k <= '4' && state !== 'loading') {
+  } else if (k === 'n') actions.next();
+  else if (k >= '1' && k <= '9' && Number(k) <= LEVELS.length && state !== 'loading') {
     if (state === 'menu') g.team.score = 0;
     startLevel(Number(k) - 1);
-  } else if (k === 'escape') toMenu();
-  else if (k === 'f') document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.();
+  } else if (k === 'escape') actions.menu();
+  else if (k === 'f') actions.fullscreen();
   else if (k === 'd') g.debug = !g.debug;
-  else if (k === 'c' && pose && tracker === pose) switchCamera();
+  else if (k === 'c') actions.camera();
   else if (k === 'b') g.view = g.view === 'cutout' ? 'camera' : 'cutout';
   else if (k === 'k') g.skeleton = { thin: 'bold', bold: 'off', off: 'thin' }[g.skeleton];
   else if (k === 'm' && state !== 'loading') {
@@ -218,12 +268,36 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('pointerdown', unlock);
 
+createControls(actions, {
+  state: () => state,
+  mouseIsPlaying: () => !!mouse && tracker === mouse,
+  hasCamera: () => !!pose && tracker === pose,
+});
+
+// Offline play on the hosted site: a service worker keeps a copy of the game. Only over HTTPS (GitHub Pages),
+// so the local server and the tests always run the files on disk.
+if (location.protocol === 'https:' && 'serviceWorker' in navigator && !params.has('nosw')) {
+  navigator.serviceWorker.register(new URL('../sw.js', import.meta.url)).catch((e) => console.warn('offline copy unavailable', e));
+}
+
 // ------------------------------------------------------------------ update
+let cutoutKey = '';
+let cutoutT = 0;
 function update(dt) {
   g.players = tracker ? tracker.update(g.now) : [];
   stateT += dt;
-  // Cut the kids out of the camera picture (pose silhouettes + motion safety net).
-  cutoutReady = g.view === 'cutout' && !!pose && tracker === pose && cutout.update(pose.video, pose.maskLow, pose.maskW, pose.maskH, dt);
+  admitPlayers(dt);
+  // Cut the kids out of the camera picture (pose silhouettes + motion safety net). Only worth redoing when
+  // the camera has a new picture or tracking a new answer (about 30 times a second, not every screen refresh);
+  // in between, the last cut-out is drawn again.
+  cutoutT += dt;
+  const key = pose ? `${pose.video.currentTime}:${pose.frameSeq}` : '';
+  if (g.view !== 'cutout' || !pose || tracker !== pose) cutoutReady = false;
+  else if (key !== cutoutKey) {
+    cutoutKey = key;
+    cutoutReady = cutout.update(pose.video, pose.maskLow, pose.maskW, pose.maskH, cutoutT) || cutoutReady;
+    cutoutT = 0;
+  }
 
   for (const q of g.particles) {
     q.life -= dt;
@@ -265,12 +339,40 @@ function update(dt) {
   }
 }
 
+// People who show up while a game is under way only watch (they are in the picture, but can't score or be hit),
+// so a parent walking past or a visiting cousin never barges in. To play they hold their arms out for 2 s.
+// A kid who was playing and steps out of view is recognised when they come back (people.js) and carries on.
+function admitPlayers(dt) {
+  const playing = state !== 'menu' && state !== 'loading';
+  for (const p of g.players) {
+    if (p.isNew) {
+      p.isNew = false;
+      if (playing) p.excluded = true;
+    }
+    if (playing && lateJoin(p, dt)) {
+      toast('A new player joined!', 3);
+      sfx.star();
+    }
+  }
+}
+
+// If the screen can't keep up (under ~40 frames a second for a few seconds), turn the glow effects off.
+let slowFor = 0;
+function watchFrameRate(dt) {
+  if (!g.fx || settings.fxPinned || state === 'loading') return;
+  slowFor = dtSmooth > 1 / 40 ? slowFor + dt : 0;
+  if (slowFor > 4) {
+    g.fx = false;
+    console.warn('drawing is slow, glow effects off');
+  }
+}
+
 // ------------------------------------------------------------------ render
 // Which cartoon world to show: one per level, a meadow in the menu, fireworks in the finale.
 function backdropId() {
   if (state === 'finale') return 'finale';
   if (state === 'menu' || state === 'loading' || !g.level) return 'menu';
-  return g.level.id;
+  return typeof g.level.backdrop === 'string' ? g.level.backdrop : g.level.id;
 }
 
 function drawBackground() {
@@ -295,7 +397,8 @@ function drawBackground() {
     return;
   }
   // cartoon world, with the kids cut out of the camera picture and placed in it
-  backdrops.draw(ctx, backdropId(), g.W, g.H, g.now);
+  const custom = state !== 'menu' && state !== 'finale' && typeof g.level?.backdrop === 'object' ? g.level.backdrop : undefined;
+  backdrops.draw(ctx, backdropId(), g.W, g.H, g.now, custom);
   if (camera && cutoutReady) cutout.draw(ctx, r);
 }
 function drawParticles() {
@@ -384,7 +487,7 @@ function render() {
       text(ctx, `Starting with ${n} player${n > 1 ? 's' : ''}... keep your arms out!`, g.W / 2, g.H * 0.86, 46 * u, { color: '#7dff6b' });
     }
     drawPlayerCount();
-    text(ctx, 'grown-ups: SPACE starts with everyone', g.W - 30 * u, g.H - 30 * u, 24 * u, { align: 'right' });
+    text(ctx, settings.mobile ? 'grown-ups: tap the screen for the buttons (Start, Camera, Full screen)' : 'grown-ups: SPACE starts with everyone, or tap or move the mouse for buttons', g.W - 30 * u, g.H - 30 * u, 24 * u, { align: 'right' });
     if (pose && tracker === pose && pose.isPortrait) text(ctx, 'The camera picture is upright (portrait). Turn the phone sideways for a much wider view.', g.W / 2, g.H * 0.26, 28 * u, { color: '#ffe14d' });
     if (g.notice) text(ctx, g.notice, g.W / 2, g.H * 0.26, 28 * u, { color: '#ffb3b3' });
     if (tracker === mouse) text(ctx, 'Mouse mode: move = body & hands, click = jump, Q/W/E = poses', g.W / 2, g.H * 0.8, 28 * u);
@@ -427,10 +530,10 @@ function render() {
     ctx.fillStyle = 'rgba(0,0,0,0.6)';
     ctx.fillRect(10, g.H - 110, 420, 100);
     const line = (s, y) => text(ctx, s, 20, y, 22, { align: 'left', stroke: 'transparent', weight: 600 });
-    line(`fps ${fps}   detect ${tracker?.detectMs?.toFixed?.(1)} ms (${tracker?.delegate}, ${tracker?.modelName ?? '-'})`, g.H - 90);
+    line(`fps ${fps}   detect ${tracker?.detectMs?.toFixed?.(1)} ms (${tracker?.delegate}, ${tracker?.modelName ?? '-'}${pose && tracker === pose ? `, ${pose.quality.name}, ${pose.useWorker ? 'worker' : 'main thread'}` : ''})`, g.H - 90);
     line(`players ${g.activePlayers().length}   state ${state}   diff ${g.diff.toFixed(2)}`, g.H - 62);
     if (pose && tracker === pose) text(ctx, `camera ${pose.cameraLabel} ${pose.video.videoWidth}x${pose.video.videoHeight} (${pose.mode}, ${pose.cameraFps ? pose.cameraFps.toFixed(0) + ' fps' : 'measuring'})`, 440, g.H - 62, 22 * u, { align: 'left', stroke: 'rgba(0,0,0,0.8)', weight: 600 });
-    line(`keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  1-4 level  Esc menu`, g.H - 34);
+    line(`keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  1-${LEVELS.length} level  Esc menu`, g.H - 34);
     if (g.view === 'cutout' && cutoutReady) {
       const s = cutout.stats;
       text(ctx, `cut-out ${(s.coverage * 100).toFixed(0)}% of screen   pose mask ${s.poseActive ? 'ON' : 'LOST (using motion)'}   motion ${(s.motionFrac * 100).toFixed(0)}%`, 440, g.H - 90, 22 * u, { align: 'left', stroke: 'rgba(0,0,0,0.8)', weight: 600 });
@@ -454,6 +557,7 @@ function frame(ts) {
   dtSmooth = dtSmooth * 0.95 + dt * 0.05;
   g.now = now;
   update(dt);
+  watchFrameRate(dt);
   render();
 }
 
@@ -461,4 +565,4 @@ requestAnimationFrame(frame);
 boot();
 
 // handy for debugging / automated tests
-window.__game = { g, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; } };
+/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; } };

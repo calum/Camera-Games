@@ -15,5 +15,6 @@ with these exact names. Any that are missing use the built-in placeholder.
 | `bg_bubbles.png` `bg_dodge.png` `bg_jump.png` `bg_dance.png` | backdrop for each level | same |
 | `bg_finale.png` | backdrop for the finale | same |
 
-Refresh the page after adding files. To add a new art slot, add one line to `DEFS` in `src/art.js`
-and call `drawArt(ctx, 'name', x, y, size)` from a level.
+Refresh the page after adding files. To add a new art slot, declare it in the level
+(`art: { name: { file: 'name.png', emoji: '...' } }`, see [docs/ADDING-GAMES.md](../docs/ADDING-GAMES.md)) or add
+one line to `DEFS` in `src/art.js`, and call `drawArt(ctx, 'name', x, y, size)` from the level.
