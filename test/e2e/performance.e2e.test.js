@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findBrowser, startServer, makeFakeWebcamFile, launch, openGame, waitForState, wait } from './helpers.js';
+import { findBrowser, startServer, makeFakeWebcamFile, launch, openGame, waitForState, waitForPerson, wait } from './helpers.js';
 
 // How long the benchmark below takes on the reference machine. Re-measure it if you change the benchmark.
 const REFERENCE_BENCH_MS = 44;
@@ -78,7 +78,7 @@ test('PERFORMANCE: every level stays smooth on an average laptop with no GPU (a 
     console.log(`benchmark ${benchMs.toFixed(0)} ms (reference ${REFERENCE_BENCH_MS} ms): CPU slowed down ${rate.toFixed(2)}x`);
 
     await waitForState(page, 'menu', 90000);
-    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 90000 });
+    await waitForPerson(page);
 
     const ids = await page.evaluate(() => window.__game.levels.map((l) => l.id));
     const slow = [];
