@@ -28,7 +28,7 @@ or screens. No camera is needed for either: the e2e tests feed a photo through a
 ## Architecture
 
 ```
-src/main.js        game loop, state machine (loading > menu > pick > intro > play > outro > pick ...), HUD, keys + actions
+src/main.js        game loop, state machine (loading > (setup) > menu > pick > intro > play > outro > pick ...), HUD, keys + actions
 src/types.js       JSDoc typedefs: Player, Game, Level, Scene. Import with /** @import { Player } from './types.js' */
 src/tracker.js     PoseTracker (camera + engine + quality ladder) and MouseTracker; computeFeatures() -> a "player"
 src/pose-worker.js CLASSIC Web Worker running MediaPipe (it needs importScripts); returns landmarks, mask, looks
@@ -51,6 +51,7 @@ src/art.js         loads optional PNG overrides from assets/ (falls back to emoj
 src/draw.js        text, skeleton, hearts, pose icon helpers
 src/audio.js       synthesized sound effects (tones + filtered noise, no files), a few per level
 src/ease.js        pure: auto-ease. Misses (g.miss()) and dry spells lower g.diff; a good spell restores it
+src/setup-check.js pure: first-launch setup check (camera, light, distance, speed) with plain-word fixes
 ```
 
 Key ideas to preserve:
@@ -90,6 +91,9 @@ Key ideas to preserve:
   The canvas is capped at 1920x1080 (scaled up by CSS) and glow effects turn off when drawing gets slow.
 - The mask fusion in `person-mask.js` is tuned by `DEFAULTS` at the top of that file. Level difficulty constants
   (rock speed, wave timing, hold times) are at the top of `levels.js`.
+- **The setup check** (state `setup`) runs on the first launch with a camera, until it has passed once
+  (`kcg.setupDone` in localStorage). `?setup` shows it again, `?nosetup` or `?level=` skip it, SPACE/Esc/tap skip it.
+  `openGame` in the e2e helpers marks it done unless called with `{ setup: true }`.
 - `window.__game` exposes internals (`g`, `tracker`, `cutout`, `backdrops`, `state`) for the tests. Keep it.
 
 ## Pitfalls (each one has bitten this project)
