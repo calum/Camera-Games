@@ -54,7 +54,7 @@ const duckjump = {
     for (const h of this.items) {
       const before = h.t;
       h.t += dt;
-      for (const mark of [-1.2, -0.6, 0]) if (before < mark && h.t >= mark) (mark === 0 ? sfx.go : sfx.tick)();
+      for (const mark of [-1.2, -0.6, 0]) if (before < mark && h.t >= mark) (mark === 0 ? (h.kind === 'log' ? sfx.roll : sfx.tweet) : sfx.tick)();
       if (h.t < 0) continue;
       if (before < 0) {
         // a bird flies at the kids' head height, picked once so it doesn't wobble with tracking
@@ -85,10 +85,11 @@ const duckjump = {
         if (ok) {
           g.score(p, 1, p.cx, p.sh.y - 120 * u);
           g.burst(p.cx, p.sh.y, '#4dff88', 18);
-          sfx.star();
+          (h.kind === 'log' ? sfx.boing : sfx.swish)();
         } else {
           g.burst(p.cx, h.kind === 'log' ? g.H - 130 * u : p.px[0].y, h.kind === 'log' ? '#a0703f' : '#ffffff', 14);
-          sfx.splash();
+          sfx.bonk();
+          g.miss();
         }
       }
     }

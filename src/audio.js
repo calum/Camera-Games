@@ -127,4 +127,11 @@ export const sfx = {
   },
   rush: () => noise(0.9, { freq: 400, to: 2500, q: 0.8, vol: 0.12 }), // a wall coming at you
   swish: () => noise(0.3, { freq: 3000, to: 800, q: 1, vol: 0.12 }),
+  tweet: () => [0, 0.12].forEach((d) => tone(2200, 0.08, { to: 3200, vol: 0.06, delay: d })), // a bird coming
+  note: (step = 0) => tone(523 * 2 ** (step / 12), 0.18, { type: 'triangle', vol: 0.1 }), // step = semitones above C
+  ice: () => {
+    noise(0.5, { freq: 6000, filter: 'highpass', vol: 0.08 });
+    [2637, 2093, 1568].forEach((f, i) => tone(f, 0.3, { delay: i * 0.06, vol: 0.06 }));
+  },
+  crack: () => noise(0.15, { freq: 2500, to: 600, q: 1.5, vol: 0.22 }),
 };

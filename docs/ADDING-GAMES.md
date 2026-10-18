@@ -155,7 +155,7 @@ the new file name in [`assets/README.md`](../assets/README.md).
 
 **Sound**: `sfx.<name>()` from `../audio.js`, for example `pop`, `gold`, `star`, `tick`, `go`, `bubble`,
 `whistle` (something falling), `thud`, `bonk` (a friendly fail), `boing`, `splosh`, `chime`, `sparkle`,
-`crunch`, `crumble`, `twinkle`, `rumble`, `swish`. See the full list in `sfx`. They are synthesized from tones
+`crunch`, `crumble`, `twinkle`, `rumble`, `swish`, `tweet`, `ice`, `crack`, `note(semitones)`. See the full list in `sfx`. They are synthesized from tones
 and filtered noise, so no files are needed. Give a new level a few sounds of its own (add a line to `sfx`), and
 keep failing sounds silly rather than scary. A unit test checks that every `sfx.<name>` a level uses exists.
 
