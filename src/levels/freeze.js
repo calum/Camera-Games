@@ -26,6 +26,7 @@ export const isMoving = (p, phase) => (p.motion ?? 0) > (phase === 'dance' ? MOV
 const freeze = {
   id: 'freeze',
   title: 'Freeze!',
+  icon: '🧊',
   hint: 'Dance while the music plays. When it stops, FREEZE!',
   color: '#7fd0ff',
   duration: 40,

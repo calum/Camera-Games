@@ -41,6 +41,7 @@ const balloons = {
   id: 'balloons',
   backdrop: EXTRA_SCENES.balloons,
   title: 'Keep it up!',
+  icon: '🎈',
   hint: "Tap the balloons up with your hands. Don't let them touch the floor!",
   color: '#ff5a7a',
   duration: 45,

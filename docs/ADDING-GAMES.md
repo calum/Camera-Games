@@ -29,12 +29,13 @@ camera -> pose model (worker) -> people.js (who is who) -> tracker.js (players) 
 ```
 
 `main.js` runs the game: menu, a 3-second intro with your title and hint, your level for `duration` seconds,
-an outro, then the next level. Each frame it calls your level's `update(g, dt)` then `draw(g, ctx)`. The
+an outro, then back to the level picker. Each frame it calls your level's `update(g, dt)` then `draw(g, ctx)`. The
 cartoon backdrop and the kids' cut-out are drawn **before** your level; the skeletons, scores and HUD
 **after** it.
 
-The order of play is the list in [`src/levels/index.js`](../src/levels/index.js). Keys `1` to `9` jump to a
-level by its position in that list.
+The cards in the level picker follow the list in [`src/levels/index.js`](../src/levels/index.js), and keys `1`
+to `9` play a level by its position in that list. Give your level an `icon` (one emoji): it is the big picture
+on its card.
 
 A level is a plain object (see the `Level` type in [`src/types.js`](../src/types.js)):
 
@@ -42,6 +43,7 @@ A level is a plain object (see the `Level` type in [`src/types.js`](../src/types
 |---|---|
 | `id` | Short, unique, lowercase (`'stars'`). Also names the backdrop and `assets/bg_<id>.png`. |
 | `title` | The big title on the intro screen and in the HUD. |
+| `icon` | One emoji, the big picture on the level's card in the level picker (a kid who can't read picks by it). |
 | `hint` | One short line saying what to do. Most kids can't read it, so a grown-up says it out loud. |
 | `color` | The level's colour, used as a light tint in camera view. |
 | `duration` | Seconds. Levels are about 30 s. |
@@ -64,7 +66,7 @@ same object is reused every time the level is played.
    cp src/levels/_template.js src/levels/rockets.js
    ```
 
-   Change `id`, `title`, `hint` and `color`, and rename the variable.
+   Change `id`, `title`, `icon`, `hint` and `color`, and rename the variable.
 
 2. **Add it to the list** in `src/levels/index.js`:
 

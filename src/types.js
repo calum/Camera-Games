@@ -72,7 +72,7 @@
  * @property {(p: Player | null, pts: number, x: number, y: number) => void} score  add points (p = null: team only)
  * @property {(x: number, y: number, color: string, n?: number) => void} burst     a confetti burst
  * @property {() => void} miss    a kid failed something (hit, splash, bonk): feeds auto-ease
- * @property {(msg: string) => void} endLevel  end the level early with a message (e.g. out of hearts: it replays)
+ * @property {(msg: string) => void} endLevel  end the level early with a message (e.g. out of hearts)
  */
 
 /**
@@ -92,6 +92,7 @@
  * @typedef {object} LevelBase
  * @property {string} id          short, unique, lowercase: also names the backdrop and `assets/bg_<id>.png`
  * @property {string} title       big title on the intro screen and the HUD
+ * @property {string} [icon]      one emoji: the big picture on the level's card in the level picker
  * @property {string} hint        one short line telling kids what to do
  * @property {string} color       the level's colour (a light tint in camera view)
  * @property {number} duration    seconds

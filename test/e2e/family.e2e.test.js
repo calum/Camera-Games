@@ -53,7 +53,7 @@ test('FAMILY (mouse mode): a guest\'s kid appears on the host\'s screen where th
     // the host's own kid holds their arms out; the guest (mouse mode has no real arms) does not, so only the host plays
     await host.page.mouse.move(300, 400);
     await host.page.keyboard.down('w');
-    await waitForState(host.page, 'intro', 15000);
+    await waitForState(host.page, 'pick', 15000);
     await host.page.keyboard.up('w');
     const who = await host.page.evaluate(() => window.__game.g.players.map((p) => ({ remote: !!p.remote, excluded: !!p.excluded })));
     assert.deepEqual(who.sort((a, b) => a.remote - b.remote), [{ remote: false, excluded: false }, { remote: true, excluded: true }]);

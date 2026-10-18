@@ -52,7 +52,7 @@ server.mjs                       tiny static server (localhost:8137)
 vendor/, models/                 MediaPipe runtime + pose model, stored locally
 ```
 
-Flow: `loading -> menu -> intro -> play -> outro -> ... -> finale -> (harder round)`.
+Flow: `loading -> menu (join) -> pick (level picker, src/picker.js) -> intro -> play -> outro -> pick ...`.
 
 ### How tracking becomes gameplay
 
@@ -74,7 +74,7 @@ small and tall kids, near or far, behave the same way.
 3. **Jump the waves.** 3-2-1 countdown, then a wave rolls across the screen. Jump as it passes you. The window is deliberately forgiving (0.5 s early to 0.3 s late). Every kid gets an obvious result: a green glowing skeleton, "NICE JUMP! +1" and a ring for a good jump, or a red skeleton with "SPLASH!" / "TOO EARLY!" and a hint for a miss.
 4. **Dance party.** Copy the stick-figure pose and hold it for about 1 s. Each kid scores separately.
 
-After level 4 there is a finale screen, then the next round starts a little harder (`g.diff`).
+After each level the level picker comes back; nothing plays on by itself.
 
 Design rules: team-first (shared hearts and score, per-kid stars on top); forgiving
 hit boxes; no hard failure (running out of hearts only replays the level); big text

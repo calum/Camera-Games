@@ -58,6 +58,7 @@ const avalanche = {
   id: 'avalanche',
   backdrop: EXTRA_SCENES.avalanche,
   title: 'Avalanche!',
+  icon: '🏔️',
   hint: 'Dodge the rocks, jump the boulders, and hide in the gap at the end!',
   color: '#9ad0ff',
   duration: DURATION,

@@ -9,6 +9,7 @@ import { rand, handTouching } from './kit.js';
 const bubbles = {
   id: 'bubbles',
   title: 'Pop the bubbles!',
+  icon: '🫧',
   hint: 'Wave your hands to pop them. Gold ones are worth 3!',
   color: '#2bb8ff',
   duration: 30,

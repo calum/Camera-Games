@@ -7,9 +7,9 @@ const HIDE_AFTER = 5; // seconds without a touch before the buttons fade away
 
 /**
  * @typedef {object} Actions
- * @property {() => void} start       start the game with everyone (or skip the winners screen)
+ * @property {() => void} start       start with everyone (join screen), or a surprise level (level picker)
  * @property {() => void} next        next level
- * @property {() => void} menu        back to the menu
+ * @property {() => void} menu        back one step: level -> level picker -> join screen
  * @property {() => void} fullscreen
  * @property {() => void} camera      switch camera
  * @property {() => void} family      open or close a family room (play with another home)
@@ -50,8 +50,8 @@ export function createControls(actions, info) {
   }
   function refresh() {
     const s = info.state();
-    buttons.start.hidden = !(s === 'menu' || s === 'finale');
-    buttons.next.hidden = s === 'menu' || s === 'loading';
+    buttons.start.hidden = !(s === 'menu' || s === 'pick');
+    buttons.next.hidden = s === 'menu' || s === 'pick' || s === 'loading';
     buttons.menu.hidden = s === 'menu' || s === 'loading';
     buttons.camera.hidden = !info.hasCamera();
     buttons.family.hidden = !(s === 'menu' || info.family?.());
@@ -117,7 +117,7 @@ function fullscreenNudge(actions, info) {
 
   function refresh() {
     const s = info.state();
-    box.hidden = dismissed || isFullscreen() || !(s === 'menu' || s === 'finale');
+    box.hidden = dismissed || isFullscreen() || !(s === 'menu' || s === 'pick');
   }
   document.addEventListener('fullscreenchange', refresh);
   window.addEventListener('resize', refresh);

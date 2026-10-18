@@ -59,6 +59,7 @@ const meteor = {
   id: 'meteor',
   backdrop: EXTRA_SCENES.meteor,
   title: 'Catch the stars!',
+  icon: '⭐',
   hint: 'Touch the stars with your hands. Gold ones are worth 3! Dodge the meteors when you see the !',
   color: '#ffd24d',
   duration: DURATION,

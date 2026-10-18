@@ -6,6 +6,7 @@ import { Ease } from './ease.js';
 import { loadArt, drawArt, registerArt } from './art.js';
 import { text, drawSkeleton, drawHeart } from './draw.js';
 import { Lobby, lateJoin } from './lobby.js';
+import { Picker, pickerChoices, pickerLayout, pickingHands, cardAt, surprisePick, drawPicker } from './picker.js';
 import { Cutout } from './cutout.js';
 import { Backdrops } from './backdrops.js';
 import { loadSavedCamera } from './camera.js';
@@ -83,12 +84,19 @@ const backdrops = new Backdrops();
 let cutoutReady = false;
 
 // ------------------------------------------------------------------ state machine
-// loading -> menu -> intro -> play -> outro -> (next level ...) -> finale -> intro ...
+// loading -> menu (arms out to join) -> pick (choose a level) -> intro -> play -> outro -> pick ...
 let state = 'loading';
 let stateT = 0;
 let levelIdx = 0;
+let lastPlayed = -1; // so "Surprise!" never picks the level just played
 let levelT = 0;
 const lobby = new Lobby({ hold: 3 });
+const picker = new Picker();
+const choices = pickerChoices(LEVELS);
+let pickRects = pickerLayout(choices.length, g.W, g.H, g.u);
+let pickHands = [];
+/** @type {Record<number, number>} */
+const wiggle = {}; // card -> when a hand last moved onto it
 // Playing with family in another home (docs/ONLINE.md). Idle unless the grown-up opens a room (key O) or the page
 // was opened with ?room=CODE.
 const family = new Family({ canvas, search: location.search, origin: location.origin + location.pathname, signal: params.get('signal') || SIGNAL_URL });
@@ -107,8 +115,24 @@ const everyone = () => [...localPeople(), ...family.crowd.players];
 
 function toMenu() {
   for (const p of everyone()) p.excluded = false;
+  g.level = null;
   lobby.reset();
   setState('menu');
+}
+
+// The level picker: the kids who joined choose what to play, and come back here after every level.
+function toPick() {
+  g.level = null;
+  picker.reset();
+  setState('pick');
+}
+
+/** @param {number} i  a card in `choices` */
+function choose(i) {
+  const c = choices[i];
+  if (!c) return;
+  sfx.chime();
+  startLevel(c.kind === 'level' ? c.index : surprisePick(LEVELS.length, lastPlayed));
 }
 
 // Difficulty = the round's step up, times the auto-ease.
@@ -119,6 +143,7 @@ function setDiff() {
 
 function startLevel(i) {
   levelIdx = i % LEVELS.length;
+  lastPlayed = levelIdx;
   g.level = LEVELS[levelIdx];
   g.levelEnd = null;
   g.team.hearts = g.team.maxHearts;
@@ -138,17 +163,15 @@ function startGame(joinedIds = null) {
     p.score = 0;
     p.excluded = joinedIds ? !joinedIds.includes(p.id) : false;
   }
-  startLevel(0);
+  toPick();
 }
 
+// The grown-up's "skip": the next level in the list (wrapping round).
 function nextLevel() {
-  if (levelIdx + 1 >= LEVELS.length) {
-    sfx.fanfare();
-    setState('finale');
-  } else {
-    startLevel(levelIdx + 1);
-  }
+  startLevel(levelIdx + 1);
 }
+
+const inLevel = () => state === 'intro' || state === 'play' || state === 'outro';
 
 // ------------------------------------------------------------------ setup
 function resize() {
@@ -240,16 +263,15 @@ window.addEventListener('resize', resize);
 const actions = {
   start() {
     if (state === 'menu') startGame();
-    else if (state === 'finale') {
-      g.round++;
-      startLevel(0);
-    }
+    else if (state === 'pick') choose(choices.length - 1); // Surprise!
   },
   next() {
-    if (g.level && state !== 'menu' && state !== 'loading') nextLevel();
+    if (g.level && inLevel()) nextLevel();
   },
+  // Back one step: from a level to the picker, from the picker to the join screen.
   menu() {
-    if (state !== 'loading') toMenu();
+    if (inLevel()) toPick();
+    else if (state === 'pick') toMenu();
   },
   fullscreen() {
     document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen?.();
@@ -296,6 +318,13 @@ window.addEventListener('keydown', (e) => {
   }
 });
 window.addEventListener('pointerdown', unlock);
+// A grown-up can tap (or click) a card in the picker instead of waiting for a kid's hand.
+canvas.addEventListener('pointerdown', (e) => {
+  if (state !== 'pick') return;
+  const r = canvas.getBoundingClientRect();
+  const i = cardAt(pickRects, { x: ((e.clientX - r.left) * canvas.width) / r.width, y: ((e.clientY - r.top) * canvas.height) / r.height }, 0);
+  if (i >= 0) choose(i);
+});
 
 createControls(actions, {
   state: () => state,
@@ -352,6 +381,15 @@ function update(dt) {
     // Arms out for 3s starts the game with exactly the kids who have their arms out.
     const joinedIds = lobby.update(g.activePlayers(), g.now, dt);
     if (joinedIds) startGame(joinedIds);
+  } else if (state === 'pick') {
+    pickRects = pickerLayout(choices.length, g.W, g.H, g.u);
+    pickHands = pickingHands(g.activePlayers());
+    const { chosen, entered } = picker.update(pickRects, pickHands, dt);
+    for (const i of entered) {
+      wiggle[i] = g.now;
+      sfx.tick();
+    }
+    if (chosen >= 0) choose(chosen);
   } else if (state === 'intro') {
     if (stateT > 3) {
       sfx.go();
@@ -371,16 +409,7 @@ function update(dt) {
       setState('outro');
     }
   } else if (state === 'outro') {
-    if (stateT > 3) {
-      // if the team ran out of hearts, replay the level instead of moving on
-      if (g.levelEnd) startLevel(levelIdx);
-      else nextLevel();
-    }
-  } else if (state === 'finale') {
-    if (stateT > 12) {
-      g.round++;
-      startLevel(0);
-    }
+    if (stateT > 4) toPick(); // back to the picker, to choose again (the same level is one card away)
   }
 }
 
@@ -413,10 +442,9 @@ function watchFrameRate(dt) {
 }
 
 // ------------------------------------------------------------------ render
-// Which cartoon world to show: one per level, a meadow in the menu, fireworks in the finale.
+// Which cartoon world to show: one per level, a meadow in the menu and the picker.
 function backdropId() {
-  if (state === 'finale') return 'finale';
-  if (state === 'menu' || state === 'loading' || !g.level) return 'menu';
+  if (state === 'menu' || state === 'pick' || state === 'loading' || !g.level) return 'menu';
   return typeof g.level.backdrop === 'string' ? g.level.backdrop : g.level.id;
 }
 
@@ -442,7 +470,7 @@ function drawBackground() {
     return;
   }
   // cartoon world, with the kids cut out of the camera picture and placed in it
-  const custom = state !== 'menu' && state !== 'finale' && typeof g.level?.backdrop === 'object' ? g.level.backdrop : undefined;
+  const custom = g.level && inLevel() && typeof g.level.backdrop === 'object' ? g.level.backdrop : undefined;
   backdrops.draw(ctx, backdropId(), g.W, g.H, g.now, custom);
   if (camera && cutoutReady) cutout.draw(ctx, r);
   family.drawGuest(ctx, g.W, g.H);
@@ -498,7 +526,7 @@ function render() {
     return;
   }
 
-  if (g.level && state !== 'menu' && state !== 'finale') g.level.draw(g, ctx);
+  if (g.level && inLevel()) g.level.draw(g, ctx);
   for (const p of g.players) drawSkeleton(ctx, p, g);
   drawParticles();
 
@@ -507,7 +535,7 @@ function render() {
     ctx.fillRect(0, 0, g.W, g.H);
     // All the words live in a band at the top so they never cover the kids.
     text(ctx, 'Kids Camera Game', g.W / 2, g.H * 0.07, 96 * u, { color: '#ffe14d' });
-    text(ctx, 'Arms out like an airplane for 3 seconds to JOIN and START!', g.W / 2, g.H * 0.15, 44 * u);
+    text(ctx, 'Arms out like an airplane for 3 seconds to JOIN!', g.W / 2, g.H * 0.15, 44 * u);
     text(ctx, "Stand back so the camera sees all of you. Anyone who doesn't join sits this one out.", g.W / 2, g.H * 0.2, 26 * u);
     // Who has joined: a green countdown ring over each airplane kid, a nudge over the others.
     for (const p of g.activePlayers()) {
@@ -538,6 +566,12 @@ function render() {
     if (pose && tracker === pose && pose.isPortrait) text(ctx, 'The camera picture is upright (portrait). Turn the phone sideways for a much wider view.', g.W / 2, g.H * 0.26, 28 * u, { color: '#ffe14d' });
     if (g.notice) text(ctx, g.notice, g.W / 2, g.H * 0.26, 28 * u, { color: '#ffb3b3' });
     if (tracker === mouse) text(ctx, 'Mouse mode: move = body & hands, click = jump, Q/W/E = poses', g.W / 2, g.H * 0.8, 28 * u);
+  } else if (state === 'pick') {
+    ctx.fillStyle = 'rgba(8,12,30,0.3)';
+    ctx.fillRect(0, 0, g.W, g.H);
+    text(ctx, 'Pick a game!', g.W / 2, g.H * 0.07, 84 * u, { color: '#ffe14d' });
+    drawPicker(ctx, g, choices, pickRects, picker, pickHands, wiggle);
+    text(ctx, 'Hold a hand up over a picture', g.W / 2, g.H * 0.92, 44 * u);
   } else if (state === 'intro') {
     ctx.fillStyle = 'rgba(8,12,30,0.4)';
     ctx.fillRect(0, 0, g.W, g.H);
@@ -552,16 +586,11 @@ function render() {
     drawHud();
     ctx.fillStyle = 'rgba(8,12,30,0.4)';
     ctx.fillRect(0, 0, g.W, g.H);
-    text(ctx, outroMsg, g.W / 2, g.H * 0.4, 100 * u, { color: '#ffe14d' });
-    text(ctx, `Team score: ${g.team.score}`, g.W / 2, g.H * 0.55, 70 * u);
-  } else if (state === 'finale') {
-    ctx.fillStyle = 'rgba(8,12,30,0.6)';
-    ctx.fillRect(0, 0, g.W, g.H);
-    text(ctx, 'Amazing teamwork!', g.W / 2, g.H * 0.18, 130 * u, { color: '#ffe14d' });
-    text(ctx, `Team score: ${g.team.score}`, g.W / 2, g.H * 0.32, 80 * u);
+    text(ctx, outroMsg, g.W / 2, g.H * 0.3, 100 * u, { color: '#ffe14d' });
+    text(ctx, `Team score: ${g.team.score}`, g.W / 2, g.H * 0.45, 70 * u);
+    // each kid's stars, best first, side by side
     const ranked = g.players.filter((p) => !p.excluded).sort((a, b) => b.score - a.score);
-    ranked.forEach((p, i) => text(ctx, `${i === 0 ? '👑 ' : ''}★ ${p.score}`, g.W / 2, g.H * (0.46 + i * 0.1), 70 * u, { color: p.color }));
-    text(ctx, 'Next round is a bit harder...', g.W / 2, g.H * 0.92, 44 * u);
+    ranked.forEach((p, i) => text(ctx, `${i === 0 ? '👑 ' : ''}★ ${p.score}`, g.W * ((i + 1) / (ranked.length + 1)), g.H * 0.62, 64 * u, { color: p.color }));
   }
 
   if (family.active) text(ctx, family.label, 30 * u, g.H - 30 * u, 26 * u, { align: 'left' });
@@ -614,4 +643,4 @@ requestAnimationFrame(frame);
 boot();
 
 // handy for debugging / automated tests
-/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, family };
+/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get pickRects() { return pickRects; }, family };
