@@ -4,7 +4,7 @@ import { LEVELS } from './levels/index.js';
 import { sfx, unlock } from './audio.js';
 import { Ease } from './ease.js';
 import { loadArt, drawArt, registerArt } from './art.js';
-import { text, drawSkeleton, drawHeart } from './draw.js';
+import { text, drawSkeleton, drawHeart, popScale } from './draw.js';
 import { Lobby, lateJoin } from './lobby.js';
 import { Carousel, pickerChoices, carouselLayout, carouselCardAt, surprisePick, drawPicker } from './picker.js';
 import { Cutout } from './cutout.js';
@@ -72,6 +72,16 @@ const g = {
       const a = Math.random() * Math.PI * 2;
       const s = (120 + Math.random() * 380) * this.u;
       this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.7, max: 0.7, color, size: (6 + Math.random() * 8) * this.u });
+    }
+    // plus one ring that spreads out from the spot, so a pop reads as a pop even in the corner of your eye
+    this.particles.push({ x, y, vx: 0, vy: 0, life: 0.35, max: 0.35, color, size: (50 + n * 3) * this.u, ring: true });
+  },
+  // A shower of paper confetti from the top of the screen (the end of a level that went well).
+  confetti(n = 60) {
+    const colors = ['#ff5a7a', '#ffd21f', '#4dd2ff', '#7dff6b', '#c77dff', '#ff9a3d'];
+    for (let i = 0; i < n; i++) {
+      const life = 2.6 + Math.random() * 1.2;
+      this.particles.push({ x: Math.random() * this.W, y: -Math.random() * 300 * this.u, vx: (Math.random() - 0.5) * 120 * this.u, vy: (150 + Math.random() * 200) * this.u, life, max: life, color: colors[i % colors.length], size: (10 + Math.random() * 8) * this.u, paper: Math.random() * 6 });
     }
   },
   miss() {
@@ -451,7 +461,8 @@ function update(dt) {
     q.life -= dt;
     q.x += q.vx * dt;
     q.y += q.vy * dt;
-    if (!q.txt) q.vy += 900 * g.u * dt;
+    if (q.paper !== undefined) q.paper += dt * 7; // confetti flutters down at its own pace
+    else if (!q.txt && !q.ring) q.vy += 900 * g.u * dt;
   }
   g.particles = g.particles.filter((q) => q.life > 0);
 
@@ -488,7 +499,10 @@ function update(dt) {
       if (g.levelEnd) {
         sfx.aww();
         ease.failedLevel(g.now); // out of hearts: the replay is a bit easier
-      } else sfx.fanfare();
+      } else {
+        sfx.fanfare();
+        g.confetti();
+      }
       setState('outro');
     }
   } else if (state === 'outro') {
@@ -592,8 +606,25 @@ function drawParticles() {
   for (const q of g.particles) {
     const a = Math.max(0, q.life / q.max);
     ctx.globalAlpha = a;
-    if (q.txt) text(ctx, q.txt, q.x, q.y, q.size, { color: q.color });
-    else {
+    if (q.txt) {
+      // pops in with a bounce, stays solid, then fades over its last 40%
+      ctx.globalAlpha = Math.min(1, a / 0.4);
+      text(ctx, q.txt, q.x, q.y, q.size * popScale(q.max - q.life), { color: q.color });
+    } else if (q.ring) {
+      ctx.lineWidth = 10 * g.u * a;
+      ctx.strokeStyle = q.color;
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, q.size * (1.15 - a * 0.85), 0, Math.PI * 2);
+      ctx.stroke();
+    } else if (q.paper !== undefined) {
+      ctx.globalAlpha = Math.min(1, a * 3);
+      ctx.fillStyle = q.color;
+      ctx.save();
+      ctx.translate(q.x + Math.sin(q.paper) * 20 * g.u, q.y);
+      ctx.rotate(q.paper * 0.7);
+      ctx.fillRect(-q.size / 2, -q.size * 0.3 * Math.abs(Math.cos(q.paper)) - 1, q.size, q.size * 0.6 * Math.abs(Math.cos(q.paper)) + 2);
+      ctx.restore();
+    } else {
       ctx.fillStyle = q.color;
       ctx.beginPath();
       ctx.arc(q.x, q.y, q.size * a + 1, 0, Math.PI * 2);
@@ -610,16 +641,24 @@ function drawHud() {
   // timer bar
   const bw = g.W * 0.3;
   const bx = (g.W - bw) / 2;
-  ctx.fillStyle = 'rgba(0,0,0,0.45)';
-  ctx.fillRect(bx, 28 * u, bw, 22 * u);
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(bx, 28 * u, bw * Math.max(0, 1 - levelT / L.duration), 22 * u);
+  const left = Math.max(0, L.duration - levelT);
+  const ending = left < 5 && state === 'play'; // the last 5 s: the bar goes orange and throbs
+  const bh = 22 * u * (ending ? 1 + 0.15 * Math.max(0, Math.sin(g.now * 10)) : 1);
+  roundRect(bx - 4 * u, 39 * u - bh / 2 - 4 * u, bw + 8 * u, bh + 8 * u, 'rgba(0,0,0,0.45)');
+  if (left > 0) roundRect(bx, 39 * u - bh / 2, Math.max(bh, bw * (left / L.duration)), bh, ending ? '#ffa23d' : '#fff');
   // team score
   drawArt(ctx, 'star', g.W - 220 * u, 55 * u, 64 * u);
   text(ctx, String(g.team.score), g.W - 40 * u, 55 * u, 64 * u, { align: 'right', color: '#ffe14d' });
   if (L.hearts) {
     for (let i = 0; i < g.team.maxHearts; i++) drawHeart(ctx, g.W - (60 + i * 62) * u, 130 * u, 28 * u, i < g.team.hearts);
   }
+}
+
+function roundRect(x, y, w, h, color, r = h / 2) {
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, r);
+  ctx.fill();
 }
 
 function drawPlayerCount() {
@@ -790,10 +829,16 @@ function render() {
   } else if (state === 'intro') {
     ctx.fillStyle = 'rgba(8,12,30,0.4)';
     ctx.fillRect(0, 0, g.W, g.H);
-    text(ctx, `Level ${levelIdx + 1}`, g.W / 2, g.H * 0.22, 70 * u, { color: '#ffe14d' });
-    text(ctx, g.level.title, g.W / 2, g.H * 0.36, 130 * u);
+    // the level's colour as a soft band behind the words, its picture beside the level number
+    ctx.globalAlpha = 0.35;
+    roundRect(g.W * 0.08, g.H * 0.15, g.W * 0.84, g.H * 0.42, g.level.color, 60 * u);
+    ctx.globalAlpha = 1;
+    text(ctx, `${g.level.icon ?? ''}  Level ${levelIdx + 1}`, g.W / 2, g.H * 0.22, 70 * u, { color: '#ffe14d' });
+    text(ctx, g.level.title, g.W / 2, g.H * 0.36, 130 * u * popScale(stateT));
     text(ctx, g.level.hint, g.W / 2, g.H * 0.5, 50 * u);
-    text(ctx, String(Math.max(1, Math.ceil(3 - stateT))), g.W / 2, g.H * 0.7, 200 * u, { color: '#7dff6b' });
+    // 3, 2, 1: each number lands with a bounce on its own second
+    const n = Math.max(1, Math.ceil(3 - stateT));
+    text(ctx, String(n), g.W / 2, g.H * 0.7, 200 * u * popScale(stateT - (3 - n)), { color: '#7dff6b' });
     drawPlayerCount();
   } else if (state === 'play') {
     drawHud();

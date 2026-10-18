@@ -5,7 +5,7 @@
 /** @import { Level } from '../types.js' */
 import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
-import { text } from '../draw.js';
+import { text, drawWarning } from '../draw.js';
 import { rand, handTouching, bodyHit, loseHeart, reachX } from './kit.js';
 
 export const DURATION = 40;
@@ -165,10 +165,7 @@ const meteor = {
     for (const it of this.items) {
       if (it.kind === 'meteor') {
         if (it.warn > 0) {
-          const pulse = 0.6 + 0.4 * Math.sin(g.now * 20);
-          ctx.fillStyle = `rgba(255,70,50,${0.25 * pulse})`;
-          ctx.fillRect(it.x - it.r, 0, it.r * 2, g.H);
-          text(ctx, '!', it.x, 90 * u, 130 * u * pulse, { color: '#ffdd33' });
+          drawWarning(ctx, g, it.x, it.r);
           continue;
         }
         // short flaming tail above, then the rock
