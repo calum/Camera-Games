@@ -337,7 +337,8 @@ export class PoseTracker {
     /** @type {Player[]} the players the game sees this frame (present ones) */
     this.players = [];
     this.lastVideoTime = -1;
-    this.detectMs = 0;
+    this.detectMs = 0; // round trip per tracked frame, smoothed
+    this.modelMs = 0;
     this.delegate = '?';
     this.useWorker = worker && typeof Worker !== 'undefined' && typeof createImageBitmap !== 'undefined';
     this.engine = null;
@@ -666,7 +667,7 @@ export class PoseTracker {
         .then((res) => {
           if (engine !== this.engine) return; // a late answer from an engine that has since been replaced
           // the whole round trip (frame copy, the worker, the answer coming back), not just the model's share
-          if (res) this.latest = { ...res, ms: Math.max(res.ms, performance.now() - sent) };
+          if (res) this.latest = { ...res, modelMs: res.ms, ms: Math.max(res.ms, performance.now() - sent) };
           this.failures = 0;
           this.warm = true;
         })
@@ -686,6 +687,7 @@ export class PoseTracker {
       const res = this.latest;
       this.latest = null;
       this.detectMs = this.detectMs * 0.9 + res.ms * 0.1;
+      this.modelMs = this.modelMs * 0.9 + (res.modelMs ?? res.ms) * 0.1; // the model's own share (debug)
       this._watchSpeed(res.ms, now);
       if (this.simulateLost) this._apply({ landmarks: [], looks: [], mask: null, maskW: res.maskW, maskH: res.maskH }, now);
       else this._apply(res, now);

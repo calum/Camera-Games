@@ -37,7 +37,7 @@ src/look.js        pure: a person's clothing colours from a tiny frame copy
 src/camera.js      pure camera logic: constraints (16:9 720p wish), next-camera choice, saved camera, FpsGuard, withRetry
 src/filter.js      One Euro filter for skeleton smoothing
 src/lobby.js       join-by-arms-out: arms out for 3 s starts the game with exactly those kids; lateJoin() mid-game
-src/picker.js      level picker: a card per level, chosen by holding a raised hand over it (ring fills), or a tap
+src/picker.js      level picker carousel: wave a hand out to the side to scroll, both arms up to play; taps and arrows too
 src/controls.js    on-screen buttons (touch), full-screen note, screen wake lock
 src/device.js      pure: phone/tablet detection and starting settings
 src/levels/        one file per level, index.js = the list (play order), kit.js = helpers + checkLevel, _template.js
