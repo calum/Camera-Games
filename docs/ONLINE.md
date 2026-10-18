@@ -55,19 +55,10 @@ forwarding, no addresses to type). Nothing is stored; a room exists while its so
   in ten has a router that needs a TURN relay; add Cloudflare's TURN (steps below) and the Worker hands out
   short-lived credentials, so no secret reaches the browser.
 
-**Deploy (about five minutes, needs a free Cloudflare account):**
-
-```
-cd cloudflare
-npx wrangler login
-npx wrangler deploy          # prints https://kids-camera-game-pairing.<you>.workers.dev
-```
-
-Then put that address in `src/online-config.js` (`SIGNAL_URL`) and publish the game as usual. Open a room on the TV,
-and the grandparents open the link it shows (or type the code). To add the TURN relay: in the Cloudflare dashboard
-open Realtime, then TURN, create a key, and run `npx wrangler secret put TURN_KEY_ID` and
-`npx wrangler secret put TURN_KEY_API_TOKEN` in the `cloudflare` folder. Pricing was not checked; the Worker, the
-Durable Object and TURN at family scale should be small, but look at the dashboard after the first evenings.
+**Deploying:** [DEPLOY-CLOUDFLARE.md](DEPLOY-CLOUDFLARE.md) has the steps, both once from your computer and
+automatically from GitHub Actions (two secrets for the deploy, and a `PAIRING_URL` repository variable that the
+Pages publish writes into the game, so no code edit is needed). Pricing was not checked; the Worker, the Durable
+Object and TURN at family scale should be small, but look at the dashboard after the first evenings.
 
 To try it without deploying: `npx wrangler dev` in `cloudflare/` runs the same Worker on your computer, and
 `?signal=http://127.0.0.1:8787` on the game's address (host and guest) points the game at it. The browser test
