@@ -604,24 +604,61 @@ function render() {
   }
 
   if (g.debug) {
-    const fps = dtSmooth > 0 ? Math.round(1 / dtSmooth) : 0;
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(10, g.H - 110, 420, 100);
-    const line = (s, y) => text(ctx, s, 20, y, 22, { align: 'left', stroke: 'transparent', weight: 600 });
-    line(`fps ${fps}   detect ${tracker?.detectMs?.toFixed?.(1)} ms (${tracker?.delegate}, ${tracker?.modelName ?? '-'}${pose && tracker === pose ? `, ${pose.quality.name}, ${pose.useWorker ? 'worker' : 'main thread'}` : ''})`, g.H - 90);
-    line(`players ${g.activePlayers().length}   state ${state}   diff ${g.diff.toFixed(2)} (ease ${g.ease.toFixed(2)})`, g.H - 62);
-    if (pose && tracker === pose) text(ctx, `camera ${pose.cameraLabel} ${pose.video.videoWidth}x${pose.video.videoHeight} (${pose.mode}, ${pose.cameraFps ? pose.cameraFps.toFixed(0) + ' fps' : 'measuring'})`, 440, g.H - 62, 22 * u, { align: 'left', stroke: 'rgba(0,0,0,0.8)', weight: 600 });
-    line(`keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  1-${LEVELS.length} level  Esc menu`, g.H - 34);
-    if (g.view === 'cutout' && cutoutReady) {
-      const s = cutout.stats;
-      text(ctx, `cut-out ${(s.coverage * 100).toFixed(0)}% of screen   pose mask ${s.poseActive ? 'ON' : 'LOST (using motion)'}   motion ${(s.motionFrac * 100).toFixed(0)}%`, 440, g.H - 90, 22 * u, { align: 'left', stroke: 'rgba(0,0,0,0.8)', weight: 600 });
-    }
+    // top left, on a solid panel and drawn last, so the game's own text and the buttons can't cover it
+    const lines = [...debugLines(), `keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  1-${LEVELS.length} level  Esc menu`];
+    const size = 24 * u;
+    ctx.font = `600 ${size}px "Trebuchet MS", system-ui, sans-serif`;
+    const w = Math.max(...lines.map((s) => ctx.measureText(s).width)) + 30 * u;
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(10 * u, 10 * u, w, lines.length * size * 1.3 + 20 * u);
+    lines.forEach((s, i) => text(ctx, s, 25 * u, 20 * u + (i + 0.5) * size * 1.3, size, { align: 'left', stroke: 'transparent', weight: 600 }));
     // what the game thinks each kid is doing (handy when a pose won't register)
     for (const p of g.activePlayers()) {
       const on = Object.entries(p.pose).filter(([, v]) => v).map(([k]) => k).join(' + ') || 'no pose';
       text(ctx, `on ${on}   (torso/shoulders ${(p.torso / p.shoulderW).toFixed(1)})`, p.px[0].x, p.px[0].y - 120 * u, 24 * u, { color: p.color });
     }
   }
+}
+
+// ------------------------------------------------------------------ debug (?debug or key D)
+// The same facts go on screen and, every 5 s, to the browser console (F12 > Console) as one line a grown-up
+// can copy and paste when reporting a problem. Frame and tracking rates are counted over the 5 s, not
+// derived from dt (which is capped at 50 ms, so it can never show under 20 fps).
+const dbg = { t: 0, frames: 0, seq: 0, fps: 0, tracked: 0, gpu: '' };
+function gpuName() {
+  if (dbg.gpu) return dbg.gpu;
+  try {
+    const gl = document.createElement('canvas').getContext('webgl');
+    const ext = gl?.getExtension('WEBGL_debug_renderer_info');
+    dbg.gpu = (ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl?.getParameter(gl.RENDERER)) || 'no WebGL';
+  } catch {
+    dbg.gpu = 'unknown';
+  }
+  return dbg.gpu;
+}
+function debugLines() {
+  const cam = pose && tracker === pose;
+  const s = cutout.stats;
+  const browser = navigator.userAgent.match(/(Edg|Chrome|Firefox|Version)\/[\d.]+/g)?.pop() ?? navigator.userAgent;
+  return [
+    `fps ${dbg.fps}   tracked ${dbg.tracked}/s   round trip ${tracker?.detectMs?.toFixed?.(0)} ms (model ${pose?.modelMs?.toFixed(0) ?? '-'} ms)`,
+    `tracking ${tracker?.delegate}${cam ? `, ${pose.useWorker ? 'worker' : 'main thread'}, ${pose.quality.name} (${pose.modelName})` : ''}   players ${g.activePlayers().length}   state ${state}   diff ${g.diff.toFixed(2)}`,
+    cam ? `camera ${pose.cameraLabel} ${pose.video.videoWidth}x${pose.video.videoHeight} (${pose.mode}, ${pose.cameraFps ? pose.cameraFps.toFixed(0) + ' fps' : 'measuring'})` : 'camera: none',
+    `cut-out ${g.view === 'cutout' && cutoutReady ? `${(s.coverage * 100).toFixed(0)}% of screen, pose mask ${s.poseActive ? 'ON' : 'LOST'}` : 'off'}   screen ${g.W}x${g.H}   fx ${g.fx ? 'on' : 'off'}`,
+    `${browser}   gpu ${gpuName()}`,
+  ];
+}
+function watchDebug(now) {
+  dbg.frames++;
+  if (!dbg.t) dbg.t = now;
+  if (now - dbg.t < 5) return;
+  const seq = pose?.frameSeq ?? 0;
+  dbg.fps = Math.round(dbg.frames / (now - dbg.t));
+  dbg.tracked = Math.round(((seq - dbg.seq) / (now - dbg.t)) * 10) / 10;
+  dbg.t = now;
+  dbg.frames = 0;
+  dbg.seq = seq;
+  if (g.debug) console.log(`[kids-camera-games debug] ${debugLines().join(' | ')}`);
 }
 
 // ------------------------------------------------------------------ main loop
@@ -636,6 +673,7 @@ function frame(ts) {
   g.now = now;
   update(dt);
   watchFrameRate(dt);
+  watchDebug(now);
   render();
 }
 
