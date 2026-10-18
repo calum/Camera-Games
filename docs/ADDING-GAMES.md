@@ -75,7 +75,7 @@ same object is reused every time the level is played.
 
 3. **Play it with the mouse.** Run `node server.mjs` and open
    `http://localhost:8137/?mouse&level=rockets`. The mouse is a pretend kid: moving it moves the body and
-   hands, a click is a jump, and holding Q, W or E does arms up, airplane or hands on head. Press `D` for debug
+   hands, a click is a jump, and holding Q, W or E does arms up, airplane or hands on head, and S ducks. Press `D` for debug
    info. Edit, save, refresh.
 
 4. **Run the checks.**
@@ -106,6 +106,8 @@ Every player has these fields. Positions are screen pixels, already mirrored lik
 | `shoulderW` | Shoulder width in px | **The** unit for body-relative sizes |
 | `lastJump`, `jumps` | Time of the last jump (s, compare with `g.now`) and a count | Jump games |
 | `pose.armsUp`, `pose.airplane`, `pose.handsHead` | The three recognised poses, each steadied with hysteresis | Pose games |
+| `pose.duck`, `lastDuck` | Head well below the kid's own standing height (with hysteresis), and the last time that was true | Duck games (see `duckjump.js`) |
+| `motion` | How fast the body is moving, in shoulder widths per second, smoothed over ~0.3 s. About 0 standing still, 2+ dancing | Freeze games (see `freeze.js`) |
 | `id`, `color` | Stable id and the kid's colour | Per-kid feedback, keyed state |
 | `score` | This kid's stars | Read only; add points with `g.score` |
 

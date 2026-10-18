@@ -12,6 +12,7 @@
  * @property {boolean} [armsUp]     both wrists clearly above the head
  * @property {boolean} [airplane]   arms straight out to the sides (also how kids join)
  * @property {boolean} [handsHead]  both hands next to the head
+ * @property {boolean} [duck]       head well below the kid's standing height (ducking or crouching)
  */
 
 /**
@@ -35,6 +36,8 @@
  * @property {number} torso       shoulders-to-hips length in px (unreliable on small kids: prefer shoulderW)
  * @property {number} lastJump    game time (s) of the most recent jump
  * @property {number} jumps       number of jumps so far
+ * @property {number} [lastDuck]  game time (s) the kid was last ducking (pose.duck)
+ * @property {number} [motion]    how fast the body is moving, in shoulder widths per second (smoothed ~0.3 s)
  * @property {Poses} pose
  * @property {number} score
  * @property {number} seen        game time (s) the tracker last saw them
