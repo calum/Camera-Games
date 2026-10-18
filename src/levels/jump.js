@@ -35,7 +35,7 @@ const jump = {
       const before = w.t;
       w.t += dt;
       // countdown ticks at 3, 2, 1
-      for (const mark of [-1.2, -0.6, 0]) if (before < mark && w.t >= mark) (mark === 0 ? sfx.go : sfx.tick)();
+      for (const mark of [-1.2, -0.6, 0]) if (before < mark && w.t >= mark) (mark === 0 ? sfx.wave : sfx.tick)();
       if (w.t < 0) continue;
       const prog = w.t / WAVE_TIME;
       w.x = w.dir > 0 ? -150 * u + prog * (g.W + 300 * u) : g.W + 150 * u - prog * (g.W + 300 * u);
@@ -65,10 +65,11 @@ const jump = {
           g.score(p, 1, p.hip.x, p.sh.y - 120 * u);
           g.burst(p.hip.x, p.sh.y, '#4dff88', 18);
           g.burst(p.hip.x, g.H - 150 * u, '#ffd24d', 22);
-          sfx.star();
+          sfx.boing();
         } else {
           g.burst(p.hip.x, g.H - 120 * u, '#7fd0ff', 16);
-          sfx.splash();
+          sfx.splosh();
+          g.miss();
         }
       }
     }

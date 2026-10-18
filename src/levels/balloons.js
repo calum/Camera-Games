@@ -97,7 +97,8 @@ const balloons = {
 
     for (const b of this.items) {
       b.cool -= dt;
-      b.vy = Math.min(MAX_FALL * u, b.vy + GRAVITY * u * dt);
+      const ease = g.ease ?? 1; // auto-ease (ease.js): floatier when balloons keep landing
+      b.vy = Math.min(MAX_FALL * u * ease, b.vy + GRAVITY * u * ease * dt);
       b.vx *= Math.pow(0.6, dt); // air slows the sideways drift
       b.x += b.vx * dt;
       b.y += b.vy * dt;
@@ -122,7 +123,7 @@ const balloons = {
             b.cool = TAP_COOLDOWN;
             g.score(h.p, 1, b.x, b.y - b.r);
             g.burst(b.x, b.y, b.color, 8);
-            sfx.pop();
+            sfx.boop();
             break;
           }
         }
@@ -130,7 +131,8 @@ const balloons = {
       if (b.y + b.r >= g.H - FLOOR * u) {
         b.dead = true;
         g.burst(b.x, g.H - FLOOR * u, b.color, 22);
-        sfx.splash();
+        sfx.pop();
+        g.miss();
         this.respawns.push(this.elapsed + RESPAWN);
         this.air = 0;
       }

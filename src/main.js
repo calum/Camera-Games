@@ -2,6 +2,7 @@
 import { PoseTracker, MouseTracker } from './tracker.js';
 import { LEVELS } from './levels/index.js';
 import { sfx, unlock } from './audio.js';
+import { Ease } from './ease.js';
 import { loadArt, drawArt, registerArt } from './art.js';
 import { text, drawSkeleton, drawHeart } from './draw.js';
 import { Lobby, lateJoin } from './lobby.js';
@@ -10,6 +11,8 @@ import { Backdrops } from './backdrops.js';
 import { loadSavedCamera } from './camera.js';
 import { defaultSettings } from './device.js';
 import { createControls } from './controls.js';
+import { Family } from './family.js';
+import { SIGNAL_URL } from './online-config.js';
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
 const ctx = canvas.getContext('2d');
@@ -21,6 +24,7 @@ const MAX_W = 1920;
 const MAX_H = 1080;
 
 // ------------------------------------------------------------------ shared game object
+const ease = new Ease(); // slows the game down when the kids keep failing
 /** @type {Game & Record<string, any>} */
 const g = {
   W: 1280,
@@ -32,6 +36,7 @@ const g = {
   particles: [],
   round: 0,
   diff: 1,
+  ease: 1,
   debug: params.has('debug'),
   fx: settings.fx, // glow effects: off with ?lite, on phones, or when drawing gets slow (see watchFrameRate)
   // What the kids are shown against: 'cutout' = just the kids, cut out and placed in a cartoon world;
@@ -48,7 +53,10 @@ const g = {
     return this.players.filter((p) => p.present && !p.excluded);
   },
   score(p, pts, x, y) {
-    if (p) p.score += pts;
+    if (p) {
+      p.score += pts;
+      ease.hit(this.now);
+    } else ease.point(this.now);
     this.team.score += pts;
     this.particles.push({ x, y, vx: 0, vy: -90 * this.u, life: 1, max: 1, txt: `+${pts}`, color: p ? p.color : '#fff', size: 56 * this.u });
   },
@@ -58,6 +66,9 @@ const g = {
       const s = (120 + Math.random() * 380) * this.u;
       this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.7, max: 0.7, color, size: (6 + Math.random() * 8) * this.u });
     }
+  },
+  miss() {
+    ease.miss(this.now);
   },
   endLevel(msg) {
     if (!this.levelEnd) this.levelEnd = msg;
@@ -78,6 +89,9 @@ let stateT = 0;
 let levelIdx = 0;
 let levelT = 0;
 const lobby = new Lobby({ hold: 3 });
+// Playing with family in another home (docs/ONLINE.md). Idle unless the grown-up opens a room (key O) or the page
+// was opened with ?room=CODE.
+const family = new Family({ canvas, search: location.search, origin: location.origin + location.pathname, signal: params.get('signal') || SIGNAL_URL });
 let outroMsg = '';
 let status = 'Loading...';
 
@@ -86,8 +100,10 @@ function setState(s) {
   stateT = 0;
 }
 
-// Everyone the tracker knows, including kids who are briefly out of view (so they keep their place).
-const everyone = () => /** @type {Player[]} */ (tracker?.people?.players ?? g.players);
+// Everyone the tracker knows, including kids who are briefly out of view (so they keep their place),
+// and the family guests.
+const localPeople = () => /** @type {Player[]} */ (tracker?.people?.players ?? g.players.filter((p) => !p.remote));
+const everyone = () => [...localPeople(), ...family.crowd.players];
 
 function toMenu() {
   for (const p of everyone()) p.excluded = false;
@@ -95,11 +111,19 @@ function toMenu() {
   setState('menu');
 }
 
+// Difficulty = the round's step up, times the auto-ease.
+function setDiff() {
+  g.ease = ease.factor;
+  g.diff = (1 + 0.25 * g.round) * ease.factor;
+}
+
 function startLevel(i) {
   levelIdx = i % LEVELS.length;
   g.level = LEVELS[levelIdx];
   g.levelEnd = null;
   g.team.hearts = g.team.maxHearts;
+  ease.newLevel();
+  setDiff();
   g.level.start(g);
   levelT = 0;
   setState('intro');
@@ -109,7 +133,7 @@ function startLevel(i) {
 function startGame(joinedIds = null) {
   g.team.score = 0;
   g.round = 0;
-  g.diff = 1;
+  ease.reset();
   for (const p of everyone()) {
     p.score = 0;
     p.excluded = joinedIds ? !joinedIds.includes(p.id) : false;
@@ -218,7 +242,6 @@ const actions = {
     if (state === 'menu') startGame();
     else if (state === 'finale') {
       g.round++;
-      g.diff = 1 + 0.25 * g.round;
       startLevel(0);
     }
   },
@@ -233,6 +256,10 @@ const actions = {
   },
   camera() {
     if (pose && tracker === pose) switchCamera();
+  },
+  family() {
+    family.toggle();
+    toast(family.active ? `Family room ${family.code}: ${family.role === 'host' ? 'ask them to open ' + family.link : 'looking for the host'}` : 'Family room closed', 6);
   },
 };
 
@@ -250,6 +277,8 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'f') actions.fullscreen();
   else if (k === 'd') g.debug = !g.debug;
   else if (k === 'c') actions.camera();
+  else if (k === 'o' && state !== 'loading') actions.family();
+  else if (k === 'v') family.toggleMute();
   else if (k === 'b') g.view = g.view === 'cutout' ? 'camera' : 'cutout';
   else if (k === 'k') g.skeleton = { thin: 'bold', bold: 'off', off: 'thin' }[g.skeleton];
   else if (k === 'm' && state !== 'loading') {
@@ -272,6 +301,7 @@ createControls(actions, {
   state: () => state,
   mouseIsPlaying: () => !!mouse && tracker === mouse,
   hasCamera: () => !!pose && tracker === pose,
+  family: () => family.active,
 });
 
 // Offline play on the hosted site: a service worker keeps a copy of the game. Only over HTTPS (GitHub Pages),
@@ -284,7 +314,12 @@ if (location.protocol === 'https:' && 'serviceWorker' in navigator && !params.ha
 let cutoutKey = '';
 let cutoutT = 0;
 function update(dt) {
-  g.players = tracker ? tracker.update(g.now) : [];
+  const local = tracker ? tracker.update(g.now) : [];
+  g.players = local;
+  if (family.role === 'host') {
+    family.readGuestFrame();
+    g.players = [...local, ...family.remotePlayers(g.now, g.W, g.H, localPeople().map((p) => p.slot))];
+  }
   stateT += dt;
   admitPlayers(dt);
   // Cut the kids out of the camera picture (pose silhouettes + motion safety net). Only worth redoing when
@@ -292,11 +327,17 @@ function update(dt) {
   // in between, the last cut-out is drawn again.
   cutoutT += dt;
   const key = pose ? `${pose.video.currentTime}:${pose.frameSeq}` : '';
+  let cutoutFresh = false;
   if (g.view !== 'cutout' || !pose || tracker !== pose) cutoutReady = false;
   else if (key !== cutoutKey) {
     cutoutKey = key;
-    cutoutReady = cutout.update(pose.video, pose.maskLow, pose.maskW, pose.maskH, cutoutT) || cutoutReady;
+    cutoutFresh = cutout.update(pose.video, pose.maskLow, pose.maskW, pose.maskH, cutoutT);
+    cutoutReady = cutoutFresh || cutoutReady;
     cutoutT = 0;
+  }
+  if (family.role === 'guest') {
+    family.sendFrame(local, cutoutFresh ? cutout : null, cutoutFresh ? pose.videoRect() : null, g.W, g.H, g.now);
+    if (family.guestView) return; // the host runs the game; we only send our kids and show its picture
   }
 
   for (const q of g.particles) {
@@ -318,10 +359,15 @@ function update(dt) {
     }
   } else if (state === 'play') {
     levelT += dt;
+    ease.update(g.now, g.activePlayers().length > 0);
+    setDiff();
     g.level.update(g, dt);
     if (g.levelEnd || levelT >= g.level.duration) {
       outroMsg = g.levelEnd || 'Level complete!';
-      if (!g.levelEnd) sfx.fanfare();
+      if (g.levelEnd) {
+        sfx.aww();
+        ease.failedLevel(g.now); // out of hearts: the replay is a bit easier
+      } else sfx.fanfare();
       setState('outro');
     }
   } else if (state === 'outro') {
@@ -333,7 +379,6 @@ function update(dt) {
   } else if (state === 'finale') {
     if (stateT > 12) {
       g.round++;
-      g.diff = 1 + 0.25 * g.round;
       startLevel(0);
     }
   }
@@ -400,6 +445,7 @@ function drawBackground() {
   const custom = state !== 'menu' && state !== 'finale' && typeof g.level?.backdrop === 'object' ? g.level.backdrop : undefined;
   backdrops.draw(ctx, backdropId(), g.W, g.H, g.now, custom);
   if (camera && cutoutReady) cutout.draw(ctx, r);
+  family.drawGuest(ctx, g.W, g.H);
 }
 function drawParticles() {
   for (const q of g.particles) {
@@ -443,6 +489,7 @@ function drawPlayerCount() {
 
 function render() {
   const u = g.u;
+  if (family.guestView && family.drawHostPicture(ctx, g.W, g.H)) return; // the host's picture already carries the room label
   drawBackground();
 
   if (state === 'loading') {
@@ -517,6 +564,8 @@ function render() {
     text(ctx, 'Next round is a bit harder...', g.W / 2, g.H * 0.92, 44 * u);
   }
 
+  if (family.active) text(ctx, family.label, 30 * u, g.H - 30 * u, 26 * u, { align: 'left' });
+
   if (g.toast && g.now < g.toast.until) {
     ctx.font = `800 ${36 * u}px "Trebuchet MS", system-ui, sans-serif`;
     const w = ctx.measureText(g.toast.text).width + 60 * u;
@@ -531,7 +580,7 @@ function render() {
     ctx.fillRect(10, g.H - 110, 420, 100);
     const line = (s, y) => text(ctx, s, 20, y, 22, { align: 'left', stroke: 'transparent', weight: 600 });
     line(`fps ${fps}   detect ${tracker?.detectMs?.toFixed?.(1)} ms (${tracker?.delegate}, ${tracker?.modelName ?? '-'}${pose && tracker === pose ? `, ${pose.quality.name}, ${pose.useWorker ? 'worker' : 'main thread'}` : ''})`, g.H - 90);
-    line(`players ${g.activePlayers().length}   state ${state}   diff ${g.diff.toFixed(2)}`, g.H - 62);
+    line(`players ${g.activePlayers().length}   state ${state}   diff ${g.diff.toFixed(2)} (ease ${g.ease.toFixed(2)})`, g.H - 62);
     if (pose && tracker === pose) text(ctx, `camera ${pose.cameraLabel} ${pose.video.videoWidth}x${pose.video.videoHeight} (${pose.mode}, ${pose.cameraFps ? pose.cameraFps.toFixed(0) + ' fps' : 'measuring'})`, 440, g.H - 62, 22 * u, { align: 'left', stroke: 'rgba(0,0,0,0.8)', weight: 600 });
     line(`keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  1-${LEVELS.length} level  Esc menu`, g.H - 34);
     if (g.view === 'cutout' && cutoutReady) {
@@ -565,4 +614,4 @@ requestAnimationFrame(frame);
 boot();
 
 // handy for debugging / automated tests
-/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; } };
+/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, family };

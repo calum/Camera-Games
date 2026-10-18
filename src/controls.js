@@ -12,11 +12,12 @@ const HIDE_AFTER = 5; // seconds without a touch before the buttons fade away
  * @property {() => void} menu        back to the menu
  * @property {() => void} fullscreen
  * @property {() => void} camera      switch camera
+ * @property {() => void} family      open or close a family room (play with another home)
  */
 
 /**
  * @param {Actions} actions
- * @param {{ mouseIsPlaying: () => boolean, state: () => string, hasCamera: () => boolean }} info
+ * @param {{ mouseIsPlaying: () => boolean, state: () => string, hasCamera: () => boolean, family?: () => boolean }} info
  */
 export function createControls(actions, info) {
   const bar = document.createElement('div');
@@ -25,7 +26,7 @@ export function createControls(actions, info) {
   bar.setAttribute('aria-label', 'Game controls');
   /** @type {Record<string, HTMLButtonElement>} */
   const buttons = {};
-  for (const [key, label] of [['start', '▶ Start'], ['next', '⏭ Next level'], ['menu', '⏏ Menu'], ['camera', '📷 Camera'], ['fullscreen', '⛶ Full screen']]) {
+  for (const [key, label] of [['start', '▶ Start'], ['next', '⏭ Next level'], ['menu', '⏏ Menu'], ['camera', '📷 Camera'], ['family', '👪 Family'], ['fullscreen', '⛶ Full screen']]) {
     const b = document.createElement('button');
     b.type = 'button';
     b.dataset.action = key;
@@ -53,6 +54,7 @@ export function createControls(actions, info) {
     buttons.next.hidden = s === 'menu' || s === 'loading';
     buttons.menu.hidden = s === 'menu' || s === 'loading';
     buttons.camera.hidden = !info.hasCamera();
+    buttons.family.hidden = !(s === 'menu' || info.family?.());
     buttons.fullscreen.hidden = !document.documentElement.requestFullscreen;
   }
   window.addEventListener('pointerdown', show);

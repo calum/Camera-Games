@@ -55,7 +55,7 @@ test('toddler with both arms up (real tracked numbers) is recognised as arms up'
     wl: { x: 888, y: 327 },
     wr: { x: 655, y: 316 },
   });
-  assert.deepEqual(poseOf(px), { armsUp: true, airplane: false, handsHead: false });
+  assert.deepEqual(poseOf(px), { armsUp: true, airplane: false, handsHead: false, duck: false });
 });
 
 // ---- small-kid proportions: shoulders 70px, big head, short arms --------------------------------
@@ -63,18 +63,18 @@ const kid = { nose: { x: 500, y: 300 }, sh: { x: 500, y: 355 }, shoulderW: 70 };
 
 test('small kid: arms up, airplane, hands on head are each recognised (and only that pose)', () => {
   const armsUp = poseOf(skeleton({ ...kid, wl: { x: 450, y: 250 }, wr: { x: 550, y: 250 } }));
-  assert.deepEqual(armsUp, { armsUp: true, airplane: false, handsHead: false });
+  assert.deepEqual(armsUp, { armsUp: true, airplane: false, handsHead: false, duck: false });
 
   const airplane = poseOf(skeleton({ ...kid, wl: { x: 405, y: 360 }, wr: { x: 595, y: 360 } }));
-  assert.deepEqual(airplane, { armsUp: false, airplane: true, handsHead: false });
+  assert.deepEqual(airplane, { armsUp: false, airplane: true, handsHead: false, duck: false });
 
   const handsHead = poseOf(skeleton({ ...kid, wl: { x: 470, y: 290 }, wr: { x: 530, y: 290 } }));
-  assert.deepEqual(handsHead, { armsUp: false, airplane: false, handsHead: true });
+  assert.deepEqual(handsHead, { armsUp: false, airplane: false, handsHead: true, duck: false });
 });
 
 test('small kid standing with arms down is not doing any pose', () => {
   const down = poseOf(skeleton({ ...kid, wl: { x: 465, y: 450 }, wr: { x: 535, y: 450 } }));
-  assert.deepEqual(down, { armsUp: false, airplane: false, handsHead: false });
+  assert.deepEqual(down, { armsUp: false, airplane: false, handsHead: false, duck: false });
 });
 
 test('arms bent halfway up still counts as arms up for a small kid', () => {

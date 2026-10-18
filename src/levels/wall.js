@@ -83,7 +83,7 @@ const wall = {
       this.t = 0;
       this.kids.clear();
       this.phase = 'coming';
-      sfx.whoosh();
+      sfx.rush();
     }
 
     this.t += dt;
@@ -113,10 +113,11 @@ const wall = {
       if (ok) {
         g.score(p, SAFE_POINTS, x, p.sh.y - 120 * u);
         g.burst(x, p.sh.y, '#4dff88', 18);
-        sfx.star();
+        sfx.swish();
       } else {
         g.burst(x, p.sh.y, '#ffffff', 22); // foam
-        sfx.splash();
+        sfx.splosh();
+        g.miss();
       }
     }
     this.phase = 'gone';

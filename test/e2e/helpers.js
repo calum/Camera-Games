@@ -97,8 +97,9 @@ export function launch(executablePath, extraArgs = []) {
 // 404s are ignored: the optional custom-art PNGs are expected to be missing.
 // `init` (optional) is a function, or a list of functions, that run inside the page before any game code,
 // e.g. to spy on the camera. Each must be self-contained: only its own source is sent to the page.
-export async function openGame(browser, url, { init } = {}) {
-  const page = await browser.newPage();
+export async function openGame(browser, url, { init, window = false } = {}) {
+  // window: its own browser window, so it counts as visible while another page is open (tabs behind the front one stop drawing)
+  const page = await browser.newPage(window ? { type: 'window' } : undefined);
   for (const fn of [init].flat().filter(Boolean)) await page.evaluateOnNewDocument(fn);
   const problems = [];
   page.on('pageerror', (e) => problems.push(`pageerror: ${e.message}`));

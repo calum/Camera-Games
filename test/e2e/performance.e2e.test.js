@@ -82,8 +82,8 @@ test('PERFORMANCE: every level stays smooth on an average laptop with no GPU (a 
 
     const ids = await page.evaluate(() => window.__game.levels.map((l) => l.id));
     const slow = [];
-    for (const [i, id] of ids.slice(0, 9).entries()) {
-      await page.keyboard.press(String(i + 1));
+    for (const [i, id] of ids.entries()) {
+      await page.evaluate((i) => window.__game.startLevel(i), i);
       await waitForState(page, 'play', 15000);
       await wait(500); // let the level's first frames (caching the backdrop) pass
       await page.evaluate(() => (window.__frameMs = []));

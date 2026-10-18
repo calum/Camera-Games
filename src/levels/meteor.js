@@ -132,7 +132,7 @@ const meteor = {
         const gold = s.kind === 'gold';
         g.score(p, gold ? GOLD_POINTS : 1, s.x, s.y);
         g.burst(s.x, s.y, gold ? '#ffd24d' : '#fff6b0', gold ? 24 : 12);
-        (gold ? sfx.gold : sfx.pop)();
+        (gold ? sfx.gold : sfx.twinkle)();
         return;
       }
     }
@@ -142,7 +142,7 @@ const meteor = {
   updateMeteor(g, m, dt, players) {
     if (m.warn > 0) {
       m.warn -= dt;
-      if (m.warn <= 0) sfx.whoosh();
+      if (m.warn <= 0) sfx.whistle();
       return; // a warning can't hurt
     }
     m.y += m.vy * dt;
@@ -155,7 +155,8 @@ const meteor = {
           p.hitUntil = g.now + 0.8;
           g.team.hearts--;
           g.burst(m.x, m.y, '#ff5a3a', 24);
-          sfx.boom();
+          sfx.bonk();
+          g.miss();
           if (g.team.hearts <= 0) g.endLevel('Oh no, out of hearts! Try again!');
           return;
         }
@@ -164,7 +165,7 @@ const meteor = {
     if (m.y > g.H + m.r) {
       m.dead = true;
       g.score(null, 1, m.x, g.H - 120 * g.u);
-      sfx.tick();
+      sfx.thud();
     }
   },
 

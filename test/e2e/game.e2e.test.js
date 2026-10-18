@@ -10,8 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { findBrowser, startServer, makeFakeWebcamFile, launch, openGame, openWithCameras, waitForState, waitForPerson, wait } from './helpers.js';
 import { createGameServer } from '../../server.mjs';
 
-// The number key that starts a level (keys 1-9 pick levels by their place in src/levels/index.js).
-const levelKey = (page, id) => page.evaluate((id) => String(window.__game.levels.findIndex((l) => l.id === id) + 1), id);
+// Start a level by id (keys 1-9 only reach the first nine levels in src/levels/index.js).
+const playLevel = (page, id) => page.evaluate((id) => window.__game.startLevel(window.__game.levels.findIndex((l) => l.id === id)), id);
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const photo = path.join(here, '..', 'fixtures', 'pose.jpg'); // man with arms straight out = "airplane"
@@ -97,7 +97,7 @@ test('REAL CAMERA PLAY-THROUGH: start with the keyboard, hold the airplane pose 
 
     // jump straight to the dance level and make this round the "airplane" one (the photo's pose), for as long
     // as the test needs. Rounds are random: waiting for an airplane round to come up by chance failed ~1 run in 20.
-    await page.keyboard.press(await levelKey(page, 'dance'));
+    await playLevel(page, 'dance');
     await waitForState(page, 'play', 8000);
     await page.evaluate(() => {
       const level = window.__game.g.level;
@@ -124,7 +124,7 @@ test('FULL COLOUR (camera view): kids see the camera picture at full brightness,
     await waitForState(page, 'menu', 60000);
     await waitForPerson(page);
     await page.keyboard.press('Space');
-    await page.keyboard.press(await levelKey(page, 'dance')); // dance level: nothing drawn over the left side of the screen
+    await playLevel(page, 'dance'); // dance level: nothing drawn over the left side of the screen
     await waitForState(page, 'play', 10000);
     await wait(500);
 
@@ -233,7 +233,7 @@ test('CUT-OUT: only the kid is shown (cut out of the camera picture) in front of
     await waitForState(page, 'menu', 60000);
     await waitForPerson(page);
     await page.keyboard.press('Space');
-    await page.keyboard.press(await levelKey(page, 'dance')); // dance level = dark purple disco
+    await playLevel(page, 'dance'); // dance level = dark purple disco
     await waitForState(page, 'play', 10000);
     await page.waitForFunction(() => window.__game.cutoutReady && window.__game.cutout.stats.coverage > 0.01, { timeout: 15000 });
     await wait(400);
@@ -262,7 +262,7 @@ test('CUT-OUT: B switches between the cut-out and the whole camera picture', { s
     const { page, problems } = await openGame(browser, url + '?model=full');
     await waitForState(page, 'menu', 60000);
     await page.keyboard.press('Space');
-    await page.keyboard.press(await levelKey(page, 'dance'));
+    await playLevel(page, 'dance');
     await waitForState(page, 'play', 10000);
     await wait(1200);
     const showsCamera = async () => {
@@ -293,7 +293,7 @@ test('CUT-OUT: a pose-tracking glitch fades the kid out gently instead of poppin
     const { page, problems } = await openGame(browser, url + '?model=full');
     await waitForState(page, 'menu', 60000);
     await page.keyboard.press('Space');
-    await page.keyboard.press(await levelKey(page, 'dance'));
+    await playLevel(page, 'dance');
     await waitForState(page, 'play', 10000);
     await page.waitForFunction(() => window.__game.cutoutReady && window.__game.cutout.stats.coverage > 0.02, { timeout: 15000 });
     await wait(1500);
@@ -534,15 +534,14 @@ test('ON-SCREEN TEXT: every string the game paints is intact, in the menu, every
     });
     await page.mouse.move(640, 300);
     await wait(400);
-    const n = await page.evaluate(() => Math.min(9, window.__game.levels.length));
-    const danceKey = await levelKey(page, 'dance');
-    for (const key of Array.from({ length: n }, (_, i) => String(i + 1))) {
-      await page.keyboard.press(key);
+    const ids = await page.evaluate(() => window.__game.levels.map((l) => l.id));
+    for (const id of ids) {
+      await playLevel(page, id);
       await waitForState(page, 'play', 10000);
-      if (key === danceKey) for (const k of ['q', 'w', 'e']) await page.keyboard.down(k); // hold every pose
+      if (id === 'dance') for (const k of ['q', 'w', 'e']) await page.keyboard.down(k); // hold every pose
       for (let i = 0; i < 55; i++) {
         await page.mouse.move(200 + ((i * 97) % 900), 150 + ((i * 53) % 400));
-        if (key === '3' && i % 8 === 0) {
+        if ((id === 'jump' || id === 'duckjump') && i % 8 === 0) {
           await page.mouse.down();
           await wait(40);
           await page.mouse.up();

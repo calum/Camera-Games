@@ -234,14 +234,14 @@ const dig = {
     if (b.kind === 'metal') {
       b.shake = 0.2;
       g.burst(x, this.floorY, '#dde', 6);
-      sfx.splash();
+      sfx.clank();
       return;
     }
     b.hp--;
     b.shake = 0.25;
     if (b.hp > 0) {
       g.burst(x, this.floorY, this.rows[k.y + 1].layer.top, 8);
-      sfx.tick();
+      sfx.crunch();
       return;
     }
     if (b.kind === 'tnt') {
@@ -249,7 +249,7 @@ const dig = {
       b.hp = 1;
       b.fuse = FUSE;
       b.lit = p;
-      sfx.whoosh();
+      sfx.fizz();
       return;
     }
     this.breakBrick(g, p, k.col, k.y + 1, b);
@@ -270,7 +270,7 @@ const dig = {
     } else if (b.prize) {
       g.burst(x, y, '#7fe3ff', 20);
       sfx.gold();
-    } else sfx.pop();
+    } else sfx.crumble();
     const layer = this.rows[r].layer;
     if (!this.announced.has(layer.name)) {
       this.announced.add(layer.name);
@@ -286,7 +286,7 @@ const dig = {
     b.fuse = -1;
     b.broken = true;
     g.burst(this.colX(g, c), this.cellY(g, c, r) + (ROW_H * u) / 2, '#ff7a3d', 40);
-    sfx.boom();
+    sfx.kaboom();
     g.score(p, 1, this.colX(g, c), this.cellY(g, c, r) - 40 * u);
     for (const [dc, dr] of [[-1, 0], [1, 0], [0, 1]]) {
       const n = this.cell(c + dc, r + dr);
