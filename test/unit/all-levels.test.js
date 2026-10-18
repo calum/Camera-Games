@@ -66,6 +66,10 @@ function makeG(players) {
       this.team.score += pts;
     },
     burst() {},
+    misses: 0,
+    miss() {
+      this.misses++;
+    },
     endLevel(msg) {
       this.ended ??= msg;
     },

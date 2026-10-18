@@ -25,6 +25,10 @@ function makeG(players = []) {
     burst() {
       this.bursts++;
     },
+    misses: 0,
+    miss() {
+      this.misses++;
+    },
     endLevel(msg) {
       this.endCalls++;
       this.levelEnd = msg;

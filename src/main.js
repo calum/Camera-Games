@@ -2,6 +2,7 @@
 import { PoseTracker, MouseTracker } from './tracker.js';
 import { LEVELS } from './levels/index.js';
 import { sfx, unlock } from './audio.js';
+import { Ease } from './ease.js';
 import { loadArt, drawArt, registerArt } from './art.js';
 import { text, drawSkeleton, drawHeart } from './draw.js';
 import { Lobby, lateJoin } from './lobby.js';
@@ -21,6 +22,7 @@ const MAX_W = 1920;
 const MAX_H = 1080;
 
 // ------------------------------------------------------------------ shared game object
+const ease = new Ease(); // slows the game down when the kids keep failing
 /** @type {Game & Record<string, any>} */
 const g = {
   W: 1280,
@@ -32,6 +34,7 @@ const g = {
   particles: [],
   round: 0,
   diff: 1,
+  ease: 1,
   debug: params.has('debug'),
   fx: settings.fx, // glow effects: off with ?lite, on phones, or when drawing gets slow (see watchFrameRate)
   // What the kids are shown against: 'cutout' = just the kids, cut out and placed in a cartoon world;
@@ -48,7 +51,10 @@ const g = {
     return this.players.filter((p) => p.present && !p.excluded);
   },
   score(p, pts, x, y) {
-    if (p) p.score += pts;
+    if (p) {
+      p.score += pts;
+      ease.hit(this.now);
+    } else ease.point(this.now);
     this.team.score += pts;
     this.particles.push({ x, y, vx: 0, vy: -90 * this.u, life: 1, max: 1, txt: `+${pts}`, color: p ? p.color : '#fff', size: 56 * this.u });
   },
@@ -58,6 +64,9 @@ const g = {
       const s = (120 + Math.random() * 380) * this.u;
       this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.7, max: 0.7, color, size: (6 + Math.random() * 8) * this.u });
     }
+  },
+  miss() {
+    ease.miss(this.now);
   },
   endLevel(msg) {
     if (!this.levelEnd) this.levelEnd = msg;
@@ -95,11 +104,19 @@ function toMenu() {
   setState('menu');
 }
 
+// Difficulty = the round's step up, times the auto-ease.
+function setDiff() {
+  g.ease = ease.factor;
+  g.diff = (1 + 0.25 * g.round) * ease.factor;
+}
+
 function startLevel(i) {
   levelIdx = i % LEVELS.length;
   g.level = LEVELS[levelIdx];
   g.levelEnd = null;
   g.team.hearts = g.team.maxHearts;
+  ease.newLevel();
+  setDiff();
   g.level.start(g);
   levelT = 0;
   setState('intro');
@@ -109,7 +126,7 @@ function startLevel(i) {
 function startGame(joinedIds = null) {
   g.team.score = 0;
   g.round = 0;
-  g.diff = 1;
+  ease.reset();
   for (const p of everyone()) {
     p.score = 0;
     p.excluded = joinedIds ? !joinedIds.includes(p.id) : false;
@@ -218,7 +235,6 @@ const actions = {
     if (state === 'menu') startGame();
     else if (state === 'finale') {
       g.round++;
-      g.diff = 1 + 0.25 * g.round;
       startLevel(0);
     }
   },
@@ -318,10 +334,15 @@ function update(dt) {
     }
   } else if (state === 'play') {
     levelT += dt;
+    ease.update(g.now, g.activePlayers().length > 0);
+    setDiff();
     g.level.update(g, dt);
     if (g.levelEnd || levelT >= g.level.duration) {
       outroMsg = g.levelEnd || 'Level complete!';
-      if (!g.levelEnd) sfx.fanfare();
+      if (g.levelEnd) {
+        sfx.aww();
+        ease.failedLevel(g.now); // out of hearts: the replay is a bit easier
+      } else sfx.fanfare();
       setState('outro');
     }
   } else if (state === 'outro') {
@@ -333,7 +354,6 @@ function update(dt) {
   } else if (state === 'finale') {
     if (stateT > 12) {
       g.round++;
-      g.diff = 1 + 0.25 * g.round;
       startLevel(0);
     }
   }
@@ -531,7 +551,7 @@ function render() {
     ctx.fillRect(10, g.H - 110, 420, 100);
     const line = (s, y) => text(ctx, s, 20, y, 22, { align: 'left', stroke: 'transparent', weight: 600 });
     line(`fps ${fps}   detect ${tracker?.detectMs?.toFixed?.(1)} ms (${tracker?.delegate}, ${tracker?.modelName ?? '-'}${pose && tracker === pose ? `, ${pose.quality.name}, ${pose.useWorker ? 'worker' : 'main thread'}` : ''})`, g.H - 90);
-    line(`players ${g.activePlayers().length}   state ${state}   diff ${g.diff.toFixed(2)}`, g.H - 62);
+    line(`players ${g.activePlayers().length}   state ${state}   diff ${g.diff.toFixed(2)} (ease ${g.ease.toFixed(2)})`, g.H - 62);
     if (pose && tracker === pose) text(ctx, `camera ${pose.cameraLabel} ${pose.video.videoWidth}x${pose.video.videoHeight} (${pose.mode}, ${pose.cameraFps ? pose.cameraFps.toFixed(0) + ' fps' : 'measuring'})`, 440, g.H - 62, 22 * u, { align: 'left', stroke: 'rgba(0,0,0,0.8)', weight: 600 });
     line(`keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  1-${LEVELS.length} level  Esc menu`, g.H - 34);
     if (g.view === 'cutout' && cutoutReady) {

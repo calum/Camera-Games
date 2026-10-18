@@ -27,6 +27,10 @@ function makeG(players = []) {
     burst() {
       this.bursts++;
     },
+    misses: 0,
+    miss() {
+      this.misses++;
+    },
     endLevel(msg) {
       if (!this.levelEnd) this.levelEnd = msg;
     },

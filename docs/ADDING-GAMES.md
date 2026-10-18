@@ -124,7 +124,9 @@ tracked on small kids. The old torso-based pose rules rejected a toddler with bo
 | `g.W`, `g.H` | Canvas size in px. |
 | `g.u` | The size unit: `1u = g.H / 1080`. Write every size and speed as `n * g.u` so the level looks the same on a laptop and a TV. |
 | `g.now`, `dt` | Game time in seconds, and the time since the last frame (at most 0.05 s). |
-| `g.diff` | Difficulty: 1 in the first round, then 1.25, 1.5 and so on. Multiply speeds and divide spawn gaps by it. |
+| `g.diff` | Difficulty: 1 in the first round, then 1.25, 1.5 and so on, lowered by auto-ease when the kids keep failing. Multiply speeds and divide spawn gaps by it. |
+| `g.miss()` | Call it when a kid fails something (hit by a rock, a splash, a dropped balloon). Three misses close together make the game ease off (`src/ease.js`). |
+| `g.ease` | The auto-ease factor, 1 down to 0.55. It is already in `g.diff`; use it for difficulty that is not a speed, like a hold time (`HOLD * (g.ease ?? 1)`). |
 | `g.activePlayers()` | The kids who are playing. |
 | `g.score(p, pts, x, y)` | Add points to player `p` (or `null` for the team only) with a floating "+pts" at x, y. |
 | `g.burst(x, y, color, n)` | A confetti burst. |
@@ -151,9 +153,11 @@ and draw it with `drawArt(ctx, 'rocket', x, y, size, rotation)`. It draws `asset
 added one, otherwise the emoji. If it returns `false` (no image and no emoji), draw your own fallback. List
 the new file name in [`assets/README.md`](../assets/README.md).
 
-**Sound**: `sfx.pop()`, `sfx.gold()`, `sfx.star()`, `sfx.tick()`, `sfx.go()`, `sfx.boom()`, `sfx.splash()`,
-`sfx.whoosh()`, `sfx.fanfare()` from `../audio.js`. They are synthesized, so no files are needed. Add a new
-one as a line in `sfx`.
+**Sound**: `sfx.<name>()` from `../audio.js`, for example `pop`, `gold`, `star`, `tick`, `go`, `bubble`,
+`whistle` (something falling), `thud`, `bonk` (a friendly fail), `boing`, `splosh`, `chime`, `sparkle`,
+`crunch`, `crumble`, `twinkle`, `rumble`, `swish`. See the full list in `sfx`. They are synthesized from tones
+and filtered noise, so no files are needed. Give a new level a few sounds of its own (add a line to `sfx`), and
+keep failing sounds silly rather than scary. A unit test checks that every `sfx.<name>` a level uses exists.
 
 **Backdrop**: by default a level uses the scene with its own id, or the menu meadow if there is none. Set
 `backdrop: 'jump'` to reuse a scene, or give a scene object:

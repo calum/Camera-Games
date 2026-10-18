@@ -10,7 +10,8 @@ const POSES = [
   { key: 'handsHead', name: 'Hands on your head!' },
 ];
 const ROUND = 6;
-const HOLD = 0.8; // seconds to hold a pose
+const HOLD = 0.8; // seconds to hold a pose (shorter when the game has eased off, see ease.js)
+const holdTime = (g) => HOLD * (g.ease ?? 1);
 
 /** @satisfies {Level} */
 const dance = {
@@ -36,7 +37,7 @@ const dance = {
       p.hold = 0;
       p.got = false;
     }
-    sfx.go();
+    sfx.chime();
   },
 
   update(g, dt) {
@@ -45,11 +46,11 @@ const dance = {
     for (const p of g.activePlayers()) {
       if (p.pose[this.cur.key]) {
         p.hold = (p.hold || 0) + dt;
-        if (p.hold >= HOLD && !p.got) {
+        if (p.hold >= holdTime(g) && !p.got) {
           p.got = true;
           g.score(p, 3, p.cx, p.sh.y - 120 * g.u);
           g.burst(p.cx, p.sh.y, p.color, 20);
-          sfx.star();
+          sfx.sparkle();
         }
       } else {
         p.hold = Math.max(0, (p.hold || 0) - dt * 2);
@@ -74,7 +75,7 @@ const dance = {
       ctx.stroke();
       ctx.strokeStyle = p.got ? '#7dff6b' : p.color;
       ctx.beginPath();
-      ctx.arc(x, y, 34 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, (p.hold || 0) / HOLD));
+      ctx.arc(x, y, 34 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * Math.min(1, (p.hold || 0) / holdTime(g)));
       ctx.stroke();
       if (p.got) text(ctx, '✓', x, y, 46 * u, { color: '#7dff6b' });
     }
