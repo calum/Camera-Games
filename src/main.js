@@ -14,6 +14,9 @@ import { defaultSettings } from './device.js';
 import { createControls } from './controls.js';
 import { Family } from './family.js';
 import { SIGNAL_URL } from './online-config.js';
+import { DebugRecorder } from './debug-record.js';
+import { parseRecording, recordingStart } from './recording.js';
+import { ReplayTracker } from './replay.js';
 import { SetupCheck, shouldRunSetup, saveSetupDone, frameBrightness, judgeCamera, judgeLight, judgeDistance, judgeSpeed, judgeGraphics, softwareRendering, accelerationHelp } from './setup-check.js';
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
@@ -55,6 +58,7 @@ const g = {
     return this.players.filter((p) => p.present && !p.excluded);
   },
   score(p, pts, x, y) {
+    note('score', { pts, player: p?.id ?? null });
     if (p) {
       p.score += pts;
       ease.hit(this.now);
@@ -70,15 +74,19 @@ const g = {
     }
   },
   miss() {
+    note('miss');
     ease.miss(this.now);
   },
   endLevel(msg) {
+    if (!this.levelEnd) note('end', { msg });
     if (!this.levelEnd) this.levelEnd = msg;
   },
 };
 
 let pose = null;
 let mouse = null;
+/** @type {ReplayTracker | null} */
+let replay = null; // ?replay, or a recording dropped on the page: plays a debug recording instead of the camera
 let tracker = null;
 const cutout = new Cutout();
 const backdrops = new Backdrops();
@@ -107,6 +115,7 @@ let setup = new SetupCheck();
 function setState(s) {
   state = s;
   stateT = 0;
+  note('state', { state: s, level: g.level?.id ?? null });
 }
 
 // Everyone the tracker knows, including kids who are briefly out of view (so they keep their place),
@@ -199,6 +208,12 @@ async function boot() {
   for (const level of LEVELS) if (level.art) registerArt(level.art);
   loadArt();
   resize();
+  if (params.has('replay')) {
+    useReplay(null);
+    g.notice = 'Replay: drop a recording (.json) on the page, or press L to choose one';
+    setState('menu');
+    return;
+  }
   if (params.has('mouse')) {
     useMouse();
     setState('menu');
@@ -245,6 +260,7 @@ function jumpToLevelFromUrl() {
 
 function toast(text, secs = 3.5) {
   g.toast = { text, until: g.now + secs };
+  note('toast', { text });
 }
 
 let switchingCamera = false;
@@ -290,6 +306,13 @@ const actions = {
     family.toggle();
     toast(family.active ? `Family room ${family.code}: ${family.role === 'host' ? 'ask them to open ' + family.link : 'looking for the host'}` : 'Family room closed', 6);
   },
+  save() {
+    saveRecording();
+  },
+  video() {
+    if (!g.debug) return;
+    toast(debugRecorder().toggleVideo() ? 'Recording the screen too (kept on this computer, last 30-60 s)' : 'Screen video off', 4);
+  },
 };
 
 window.addEventListener('keydown', (e) => {
@@ -311,6 +334,9 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'v') family.toggleMute();
   else if (k === 'b') g.view = g.view === 'cutout' ? 'camera' : 'cutout';
   else if (k === 'k') g.skeleton = { thin: 'bold', bold: 'off', off: 'thin' }[g.skeleton];
+  else if (k === 'r' && g.debug) actions.save();
+  else if (k === 'g' && g.debug) actions.video();
+  else if (k === 'l' && (g.debug || replay)) chooseRecording();
   else if (k === 'm' && state !== 'loading') {
     if (tracker === mouse) {
       if (pose) {
@@ -348,6 +374,7 @@ createControls(actions, {
   mouseIsPlaying: () => !!mouse && tracker === mouse,
   hasCamera: () => !!pose && tracker === pose,
   family: () => family.active,
+  debug: () => g.debug,
 });
 
 // Offline play on the hosted site: a service worker keeps a copy of the game. Only over HTTPS (GitHub Pages),
@@ -471,7 +498,7 @@ function admitPlayers(dt) {
   for (const p of g.players) {
     if (p.isNew) {
       p.isNew = false;
-      if (playing) p.excluded = true;
+      if (playing && !(replay && tracker === replay && g.now < replayAdmitUntil)) p.excluded = true; // (a replay's kids were already playing)
     }
     if (playing && lateJoin(p, dt)) {
       toast('A new player joined!', 3);
@@ -696,6 +723,7 @@ function render() {
     ranked.forEach((p, i) => text(ctx, `${i === 0 ? '👑 ' : ''}★ ${p.score}`, g.W * ((i + 1) / (ranked.length + 1)), g.H * 0.62, 64 * u, { color: p.color }));
   }
 
+  if (replay && tracker === replay) drawReplay();
   if (reconnecting()) drawReconnecting();
   if (family.active) text(ctx, family.label, 30 * u, g.H - 30 * u, 26 * u, { align: 'left' });
 
@@ -709,7 +737,7 @@ function render() {
 
   if (g.debug) {
     // top left, on a solid panel and drawn last, so the game's own text and the buttons can't cover it
-    const lines = [...debugLines(), `keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  1-${LEVELS.length} level  Esc menu`];
+    const lines = [...debugLines(), recordingLine(), `keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  1-${LEVELS.length} level  Esc menu`];
     const size = 24 * u;
     ctx.font = `600 ${size}px "Trebuchet MS", system-ui, sans-serif`;
     const w = Math.max(...lines.map((s) => ctx.measureText(s).width)) + 30 * u;
@@ -765,6 +793,157 @@ function watchDebug(now) {
   if (g.debug) console.log(`[kids-camera-games debug] ${debugLines().join(' | ')}`);
 }
 
+// ------------------------------------------------------------------ recordings (debug mode, see recording.js)
+// While debug is on, the last minute is kept: every tracking answer, a few samples a second of how things ran,
+// and what happened. R saves it as a file to send back with a problem; G adds a video of the screen (it shows the
+// kids, so only when asked). ?replay (or dropping a file on the page) plays one back through the real game.
+// Nothing here runs, or costs anything, until debug is turned on.
+/** @type {DebugRecorder | null} */
+let rec = null;
+let sampleAt = 0;
+let replayAdmitUntil = 0;
+let replayEnded = false;
+
+function debugRecorder() {
+  if (rec) return rec;
+  rec = new DebugRecorder(canvas);
+  // warnings (recovery, slow drawing) go in the recording too
+  for (const level of /** @type {const} */ (['warn', 'error'])) {
+    const orig = console[level];
+    console[level] = (...a) => {
+      note(level, { text: a.map((x) => (x instanceof Error ? x.message : String(x))).join(' ') });
+      orig.apply(console, a);
+    };
+  }
+  note('state', { state, level: g.level?.id ?? null });
+  return rec;
+}
+
+/** @param {string} type  @param {Record<string, any>} [data] */
+function note(type, data) {
+  if (g.debug && rec) rec.data.event(g.now, type, data);
+}
+
+const round1 = (/** @type {number} */ n) => Math.round(n * 10) / 10;
+function recordSample(now) {
+  debugRecorder();
+  if (pose && !pose.onAnswer) pose.onAnswer = (res, t) => g.debug && rec.data.frame(t, res.landmarks, res.looks, pose.video.videoWidth, pose.video.videoHeight);
+  if (now < sampleAt) return;
+  sampleAt = now + 0.25;
+  const cam = pose && tracker === pose;
+  rec.data.sample(now, {
+    state,
+    level: g.level?.id ?? null,
+    levelT: round1(levelT),
+    fps: Math.round(1 / dtSmooth),
+    detectMs: round1(tracker?.detectMs ?? 0),
+    modelMs: cam ? round1(pose.modelMs) : null,
+    quality: cam ? pose.quality.name : null,
+    tracking: `${tracker?.delegate}${cam ? (pose.useWorker ? ' worker' : ' main') : ''}`,
+    cameraFps: cam ? round1(pose.cameraFps) : null,
+    reconnecting: reconnecting(),
+    diff: Math.round(g.diff * 100) / 100,
+    score: g.team.score,
+    hearts: g.team.hearts,
+    view: g.view,
+    fx: g.fx,
+    cutout: g.view === 'cutout' && cutoutReady ? Math.round(cutout.stats.coverage * 100) : null,
+    players: g.players.map((p) => ({ id: p.id, x: Math.round(p.cx), out: !!p.excluded, pose: Object.keys(p.pose ?? {}).filter((k) => p.pose[k]).join('+') })),
+  });
+}
+
+async function saveRecording() {
+  if (!g.debug) return;
+  const r = debugRecorder();
+  const secs = Math.round(r.data.span);
+  try {
+    const names = await r.save({
+      saved: new Date().toISOString(),
+      browser: navigator.userAgent,
+      gpu: gpuName(),
+      screen: [g.W, g.H],
+      url: location.search,
+      state,
+      level: g.level?.id ?? null,
+      camera: pose ? { label: pose.cameraLabel, size: [pose.video.videoWidth, pose.video.videoHeight], mode: pose.mode } : null,
+      debug: debugLines(),
+    });
+    if (names.length) toast(`Saved the last ${secs} s: ${names.join(', ')} (in Downloads)`, 6);
+  } catch (e) {
+    console.warn('could not save the recording', e);
+    toast(`Could not save: ${e.message || e}`, 5);
+  }
+}
+
+function recordingLine() {
+  if (!rec) return 'recording: starting';
+  return `recording the last ${Math.round(rec.data.span)} s${rec.videoOn ? ' + screen video' : ''}   R save   G video ${rec.videoOn ? 'off' : 'on'}   L load a recording`;
+}
+
+/** @param {import('./recording.js').Recording | null} recording */
+function useReplay(recording) {
+  replay = new ReplayTracker(recording ?? { kind: '', version: 1, meta: {}, frames: [], samples: [], events: [] });
+  tracker = replay;
+  g.players = [];
+  replayEnded = false;
+  resize();
+}
+
+// Play a recording: back to where the game was when it starts (the level and how far in), then the kids'
+// movements arrive as they did.
+/** @param {import('./recording.js').Recording} recording */
+function loadRecording(recording) {
+  useReplay(recording);
+  g.notice = '';
+  const start = recordingStart(recording);
+  const i = LEVELS.findIndex((l) => l.id === start.level);
+  replayAdmitUntil = g.now + 2;
+  if (i >= 0 && (start.state === 'intro' || start.state === 'play' || start.state === 'outro')) {
+    startLevel(i);
+    if (start.state !== 'intro') {
+      setState('play');
+      levelT = start.levelT;
+    }
+  } else if (start.state === 'pick') toPick();
+  else toMenu();
+  toast(`Replaying ${recording.frames.length ? Math.round(recording.frames.at(-1).t - recording.frames[0].t) : 0} s${start.level ? ` from ${start.level}` : ''}`, 3);
+}
+
+function chooseRecording() {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = '.json,application/json';
+  input.onchange = () => input.files[0] && openRecordingFile(input.files[0]);
+  input.click();
+}
+
+/** @param {File} file */
+async function openRecordingFile(file) {
+  try {
+    loadRecording(parseRecording(await file.text()));
+  } catch (e) {
+    toast(e.message || String(e), 5);
+  }
+}
+
+window.addEventListener('dragover', (e) => (g.debug || replay) && e.preventDefault());
+window.addEventListener('drop', (e) => {
+  if (!(g.debug || replay)) return;
+  e.preventDefault();
+  const file = e.dataTransfer?.files[0];
+  if (file) openRecordingFile(file);
+});
+
+function drawReplay() {
+  const u = g.u;
+  if (replay.done && replay.rec.frames.length && !replayEnded) {
+    replayEnded = true;
+    toast('Replay finished. Press L to load another', 5);
+  }
+  const what = replay.rec.frames.length ? `Replay ${Math.round(replay.progress * 100)}%` : 'Replay: no recording loaded';
+  text(ctx, what, 30 * u, g.H - 70 * u, 30 * u, { align: 'left', color: '#ffe14d' });
+}
+
 // ------------------------------------------------------------------ main loop
 let last = 0;
 let dtSmooth = 0.016;
@@ -778,6 +957,7 @@ function frame(ts) {
   update(dt);
   watchFrameRate(dt);
   watchDebug(now);
+  if (g.debug) recordSample(now);
   render();
 }
 
@@ -785,4 +965,4 @@ requestAnimationFrame(frame);
 boot();
 
 // handy for debugging / automated tests
-/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get carousel() { return carousel; }, get setup() { return setup; }, pickCards, family };
+/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get carousel() { return carousel; }, get setup() { return setup; }, pickCards, family, get recorder() { return rec; }, get replay() { return replay; }, loadRecording };

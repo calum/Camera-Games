@@ -344,6 +344,8 @@ export class PoseTracker {
     this.latest = null;
     this.failures = 0; // detections that failed in a row
     this.simulateLost = false; // tests: pretend the model finds nobody
+    /** @type {((res: { landmarks: any[], looks?: any[] }, now: number) => void) | null} */
+    this.onAnswer = null; // set by the debug recorder (recording.js) to keep every tracking answer
     this.frameSeq = 0; // goes up by one with every tracked frame (the cut-out only redoes its work then)
     // Self-healing (health.js): what is being put right ('camera' | 'tracker'), shown as a "reconnecting" screen
     /** @type {null | 'camera' | 'tracker'} */ this.reconnecting = null;
@@ -746,6 +748,7 @@ export class PoseTracker {
 
   _apply(res, now) {
     this.frameSeq++;
+    this.onAnswer?.(res, now); // the debug recorder (only set in debug mode)
     // the merged silhouettes: keep the array when the model found nobody so the cut-out can fade them out
     if (res.mask) {
       this.maskLow = res.mask;
@@ -792,22 +795,36 @@ export class PoseTracker {
   }
 
   _ingest(all, looks, now) {
-    const dets = [];
-    all.forEach((lm, i) => {
-      if ((lm[11].visibility + lm[12].visibility) / 2 < 0.3) return;
-      const px = lm.map((l) => this.map(l.x, l.y));
-      dets.push({ px, vis: lm.map((l) => l.visibility), look: looks[i] ?? null });
-    });
-    for (const [p, d] of this.people.match(dets, now)) {
-      // Steady the skeleton: heavy smoothing on joints that are nearly still (kills jitter), light on
-      // fast ones (keeps waving and jumping instant). Joints the model is unsure about (hidden or
-      // blurry, e.g. a small kid's hips) hold their last position instead of jumping around.
-      p.filters ??= Array.from({ length: 33 }, () => ({ x: new OneEuro(), y: new OneEuro() }));
-      p.px = d.px.map((n, i) =>
-        p.px && d.vis[i] < 0.25 ? p.px[i] : { x: p.filters[i].x.filter(n.x, now), y: p.filters[i].y.filter(n.y, now) },
-      );
-      computeFeatures(p, now);
-    }
+    ingestLandmarks(this.people, (nx, ny) => this.map(nx, ny), all, looks, now);
+  }
+}
+
+/**
+ * Turn one tracking answer (normalised landmarks per body) into players: who is who (people.js), then a steadied
+ * skeleton and the features levels read. Shared by PoseTracker and the debug replay (replay.js), so a replay
+ * goes through exactly the code a live game does.
+ * @param {People} people
+ * @param {(nx: number, ny: number) => { x: number, y: number }} map  normalised camera position -> screen
+ * @param {{ x: number, y: number, visibility: number }[][]} all
+ * @param {(number[] | null)[]} looks
+ * @param {number} now
+ */
+export function ingestLandmarks(people, map, all, looks, now) {
+  const dets = [];
+  all.forEach((lm, i) => {
+    if ((lm[11].visibility + lm[12].visibility) / 2 < 0.3) return;
+    const px = lm.map((l) => map(l.x, l.y));
+    dets.push({ px, vis: lm.map((l) => l.visibility), look: looks[i] ?? null });
+  });
+  for (const [p, d] of people.match(dets, now)) {
+    // Steady the skeleton: heavy smoothing on joints that are nearly still (kills jitter), light on
+    // fast ones (keeps waving and jumping instant). Joints the model is unsure about (hidden or
+    // blurry, e.g. a small kid's hips) hold their last position instead of jumping around.
+    p.filters ??= Array.from({ length: 33 }, () => ({ x: new OneEuro(), y: new OneEuro() }));
+    p.px = d.px.map((n, i) =>
+      p.px && d.vis[i] < 0.25 ? p.px[i] : { x: p.filters[i].x.filter(n.x, now), y: p.filters[i].y.filter(n.y, now) },
+    );
+    computeFeatures(p, now);
   }
 }
 

@@ -1031,6 +1031,55 @@ test('DEBUG: ?debug prints a copyable summary of tracking to the console', { ski
   }
 });
 
+// Debug recordings: R saves the last minute (tracking, timings, events) as a file, G adds a video of the screen,
+// and ?replay plays a recording back through the real game, so the person comes back without a camera.
+test('RECORDING: in debug mode R saves the last minute, G adds screen video, and ?replay plays it back', { skip }, async () => {
+  // catch downloads instead of saving them: [name, size, type] per file
+  const spyDownloads = () => {
+    window.__downloads = [];
+    const click = HTMLAnchorElement.prototype.click;
+    HTMLAnchorElement.prototype.click = function () {
+      if (!this.download) return click.call(this);
+      window.__downloads.push(fetch(this.href).then((r) => r.blob()).then(async (b) => [this.download, b.size, b.type, b.type.includes('json') ? await b.text() : null]));
+    };
+  };
+  const browser = await launch(exe, camArgs());
+  try {
+    const { page, problems } = await openGame(browser, url + '?debug&model=full', { init: spyDownloads });
+    await waitForState(page, 'menu', 60000);
+    await waitForPerson(page, { airplane: true });
+    await page.waitForFunction(() => window.__game.recorder?.data.frames.length >= 5, { timeout: 120000, polling: 200 });
+    await page.keyboard.press('g'); // screen video on
+    await wait(2500);
+    assert.equal(await page.evaluate(() => window.__game.recorder.videoOn), true);
+    await page.keyboard.press('r');
+    await page.waitForFunction(() => window.__downloads.length >= 2, { timeout: 30000 });
+    const files = await page.evaluate(() => Promise.all(window.__downloads));
+    const [json, video] = files;
+    assert.match(json[0], /^kcg-\d{4}-\d\d-\d\d-\d{6}\.json$/);
+    assert.match(video[0], /^kcg-.*-video\.webm$/);
+    assert.ok(video[1] > 1000, `video is ${video[1]} bytes`);
+    const rec = JSON.parse(json[3]);
+    assert.equal(rec.kind, 'kids-camera-games-recording');
+    assert.ok(rec.frames.length >= 5);
+    assert.equal(rec.frames[0].lm[0].length, 99, '33 landmarks x [x, y, visibility]');
+    assert.ok(rec.samples.some((s) => s.state === 'menu' && s.players.length === 1 && typeof s.detectMs === 'number' && s.quality === 'high'));
+    assert.ok(rec.events.some((e) => e.type === 'toast' && /Recording the screen/.test(e.text)));
+    assert.match(rec.meta.debug.join(' '), /round trip/);
+    assert.deepEqual(problems, []);
+
+    // play it back: no camera, the same person appears, in the same pose
+    const replayed = await openGame(browser, url + '?replay');
+    await waitForState(replayed.page, 'menu', 30000);
+    assert.equal(await replayed.page.evaluate(() => window.__game.tracker.delegate), 'replay');
+    await replayed.page.evaluate((text) => window.__game.loadRecording(JSON.parse(text)), json[3]);
+    await replayed.page.waitForFunction(() => window.__game.g.players.some((p) => p.present && p.pose.airplane), { timeout: 30000, polling: 100 });
+    assert.deepEqual(replayed.problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
 test('MAIN-THREAD FALLBACK: with ?worker=off the pose model runs on the main thread and still finds the person', { skip }, async () => {
   const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
   try {

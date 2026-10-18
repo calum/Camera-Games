@@ -57,6 +57,9 @@ src/audio.js       synthesized sound effects (tones + filtered noise, no files),
 src/ease.js        pure: auto-ease. Misses (g.miss()) and dry spells lower g.diff; a good spell restores it
 src/setup-check.js pure: first-launch setup check (camera, light, distance, speed) with plain-word fixes
 src/health.js      pure: self-healing watchdog. Spots a lost camera or a hung tracker; tab sleep is not a fault
+src/recording.js   pure: debug recordings. Rolling last minute of tracking answers, samples and events; file format
+src/replay.js      ReplayTracker: plays a recording through ingestLandmarks (the live path); playRecording for tests
+src/debug-record.js saves a recording as a download; optional screen video (opt-in, G) in 30 s WebM pieces
 ```
 
 Key ideas to preserve:
@@ -104,6 +107,10 @@ Key ideas to preserve:
 - **The setup check** (state `setup`) runs on the first launch with a camera, until it has passed once
   (`kcg.setupDone` in localStorage). `?setup` shows it again, `?nosetup` or `?level=` skip it, SPACE/Esc/tap skip it.
   `openGame` in the e2e helpers marks it done unless called with `{ setup: true }`.
+- **Debug recordings** (`?debug`: R saves, G adds screen video, `?replay` or a dropped file plays one back). Nothing
+  is created until debug is on (`PoseTracker.onAnswer` stays null), video is never on by itself (it shows the
+  kids), and nothing is uploaded. When Calum sends a recording, replay it, fix the bug, then add it to
+  `test/fixtures/recordings/` with an `expect` so `test/unit/recording.test.js` keeps it fixed.
 - `window.__game` exposes internals (`g`, `tracker`, `cutout`, `backdrops`, `state`) for the tests. Keep it.
 
 ## Pitfalls (each one has bitten this project)
