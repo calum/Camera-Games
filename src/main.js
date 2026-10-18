@@ -6,7 +6,7 @@ import { Ease } from './ease.js';
 import { loadArt, drawArt, registerArt } from './art.js';
 import { text, drawSkeleton, drawHeart } from './draw.js';
 import { Lobby, lateJoin } from './lobby.js';
-import { Picker, pickerChoices, pickerLayout, pickingHands, cardAt, surprisePick, drawPicker } from './picker.js';
+import { Carousel, pickerChoices, carouselLayout, carouselCardAt, surprisePick, drawPicker } from './picker.js';
 import { Cutout } from './cutout.js';
 import { Backdrops } from './backdrops.js';
 import { loadSavedCamera } from './camera.js';
@@ -92,12 +92,11 @@ let levelIdx = 0;
 let lastPlayed = -1; // so "Surprise!" never picks the level just played
 let levelT = 0;
 const lobby = new Lobby({ hold: 3 });
-const picker = new Picker();
 const choices = pickerChoices(LEVELS);
-let pickRects = pickerLayout(choices.length, g.W, g.H, g.u);
-let pickHands = [];
-/** @type {Record<number, number>} */
-const wiggle = {}; // card -> when a hand last moved onto it
+const carousel = new Carousel({ n: choices.length });
+let lastStep = -9; // when the carousel last scrolled (the middle card bounces)
+// The cards as drawn this frame (for taps, and for the tests)
+const pickCards = () => carouselLayout(choices.length, carousel.pos, g.W, g.H);
 // Playing with family in another home (docs/ONLINE.md). Idle unless the grown-up opens a room (key O) or the page
 // was opened with ?room=CODE.
 const family = new Family({ canvas, search: location.search, origin: location.origin + location.pathname, signal: params.get('signal') || SIGNAL_URL });
@@ -125,7 +124,7 @@ function toMenu() {
 // The level picker: the kids who joined choose what to play, and come back here after every level.
 function toPick() {
   g.level = null;
-  picker.reset();
+  carousel.reset(lastPlayed >= 0 ? lastPlayed : 0); // the game just played is in the middle: "again!" is arms up
   setState('pick');
 }
 
@@ -269,7 +268,7 @@ const actions = {
   start() {
     if (state === 'setup') toMenu(); // skip the setup check
     else if (state === 'menu') startGame();
-    else if (state === 'pick') choose(choices.length - 1); // Surprise!
+    else if (state === 'pick') choose(carousel.index); // the game in the middle
   },
   next() {
     if (g.level && inLevel()) nextLevel();
@@ -299,6 +298,7 @@ window.addEventListener('keydown', (e) => {
     actions.start();
     e.preventDefault();
   } else if (k === 'n') actions.next();
+  else if ((k === 'arrowleft' || k === 'arrowright') && state === 'pick') scroll(k === 'arrowleft' ? -1 : 1);
   else if (k >= '1' && k <= '9' && Number(k) <= LEVELS.length && state !== 'loading') {
     if (state === 'menu') g.team.score = 0;
     startLevel(Number(k) - 1);
@@ -325,14 +325,22 @@ window.addEventListener('keydown', (e) => {
   }
 });
 window.addEventListener('pointerdown', unlock);
-// A grown-up can tap (or click) a card in the picker instead of waiting for a kid's hand.
+// A grown-up can tap (or click) the picker: a side card scrolls to it, the middle card plays.
 canvas.addEventListener('pointerdown', (e) => {
   if (state === 'setup') return toMenu(); // a tap skips the setup check
   if (state !== 'pick') return;
   const r = canvas.getBoundingClientRect();
-  const i = cardAt(pickRects, { x: ((e.clientX - r.left) * canvas.width) / r.width, y: ((e.clientY - r.top) * canvas.height) / r.height }, 0);
-  if (i >= 0) choose(i);
+  const card = carouselCardAt(pickCards(), { x: ((e.clientX - r.left) * canvas.width) / r.width, y: ((e.clientY - r.top) * canvas.height) / r.height });
+  if (!card) return;
+  if (card.i === carousel.index) choose(card.i);
+  else scroll(Math.sign(card.off) * Math.max(1, Math.round(Math.abs(card.off))));
 });
+
+function scroll(d) {
+  carousel.step(d);
+  lastStep = g.now;
+  sfx.whoosh();
+}
 
 createControls(actions, {
   state: () => state,
@@ -392,12 +400,10 @@ function update(dt) {
     const joinedIds = lobby.update(g.activePlayers(), g.now, dt);
     if (joinedIds) startGame(joinedIds);
   } else if (state === 'pick') {
-    pickRects = pickerLayout(choices.length, g.W, g.H, g.u);
-    pickHands = pickingHands(g.activePlayers());
-    const { chosen, entered } = picker.update(pickRects, pickHands, dt);
-    for (const i of entered) {
-      wiggle[i] = g.now;
-      sfx.tick();
+    const { step, chosen } = carousel.update(g.activePlayers(), dt);
+    if (step) {
+      lastStep = g.now;
+      sfx.whoosh();
     }
     if (chosen >= 0) choose(chosen);
   } else if (state === 'intro') {
@@ -634,8 +640,7 @@ function render() {
     ctx.fillStyle = 'rgba(8,12,30,0.3)';
     ctx.fillRect(0, 0, g.W, g.H);
     text(ctx, 'Pick a game!', g.W / 2, g.H * 0.07, 84 * u, { color: '#ffe14d' });
-    drawPicker(ctx, g, choices, pickRects, picker, pickHands, wiggle);
-    text(ctx, 'Hold a hand up over a picture', g.W / 2, g.H * 0.92, 44 * u);
+    drawPicker(ctx, g, choices, carousel, pickCards(), lastStep);
   } else if (state === 'intro') {
     ctx.fillStyle = 'rgba(8,12,30,0.4)';
     ctx.fillRect(0, 0, g.W, g.H);
@@ -668,24 +673,61 @@ function render() {
   }
 
   if (g.debug) {
-    const fps = dtSmooth > 0 ? Math.round(1 / dtSmooth) : 0;
-    ctx.fillStyle = 'rgba(0,0,0,0.6)';
-    ctx.fillRect(10, g.H - 110, 420, 100);
-    const line = (s, y) => text(ctx, s, 20, y, 22, { align: 'left', stroke: 'transparent', weight: 600 });
-    line(`fps ${fps}   detect ${tracker?.detectMs?.toFixed?.(1)} ms (${tracker?.delegate}, ${tracker?.modelName ?? '-'}${pose && tracker === pose ? `, ${pose.quality.name}, ${pose.useWorker ? 'worker' : 'main thread'}` : ''})`, g.H - 90);
-    line(`players ${g.activePlayers().length}   state ${state}   diff ${g.diff.toFixed(2)} (ease ${g.ease.toFixed(2)})`, g.H - 62);
-    if (pose && tracker === pose) text(ctx, `camera ${pose.cameraLabel} ${pose.video.videoWidth}x${pose.video.videoHeight} (${pose.mode}, ${pose.cameraFps ? pose.cameraFps.toFixed(0) + ' fps' : 'measuring'})`, 440, g.H - 62, 22 * u, { align: 'left', stroke: 'rgba(0,0,0,0.8)', weight: 600 });
-    line(`keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  1-${LEVELS.length} level  Esc menu`, g.H - 34);
-    if (g.view === 'cutout' && cutoutReady) {
-      const s = cutout.stats;
-      text(ctx, `cut-out ${(s.coverage * 100).toFixed(0)}% of screen   pose mask ${s.poseActive ? 'ON' : 'LOST (using motion)'}   motion ${(s.motionFrac * 100).toFixed(0)}%`, 440, g.H - 90, 22 * u, { align: 'left', stroke: 'rgba(0,0,0,0.8)', weight: 600 });
-    }
+    // top left, on a solid panel and drawn last, so the game's own text and the buttons can't cover it
+    const lines = [...debugLines(), `keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  1-${LEVELS.length} level  Esc menu`];
+    const size = 24 * u;
+    ctx.font = `600 ${size}px "Trebuchet MS", system-ui, sans-serif`;
+    const w = Math.max(...lines.map((s) => ctx.measureText(s).width)) + 30 * u;
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    ctx.fillRect(10 * u, 10 * u, w, lines.length * size * 1.3 + 20 * u);
+    lines.forEach((s, i) => text(ctx, s, 25 * u, 20 * u + (i + 0.5) * size * 1.3, size, { align: 'left', stroke: 'transparent', weight: 600 }));
     // what the game thinks each kid is doing (handy when a pose won't register)
     for (const p of g.activePlayers()) {
       const on = Object.entries(p.pose).filter(([, v]) => v).map(([k]) => k).join(' + ') || 'no pose';
       text(ctx, `on ${on}   (torso/shoulders ${(p.torso / p.shoulderW).toFixed(1)})`, p.px[0].x, p.px[0].y - 120 * u, 24 * u, { color: p.color });
     }
   }
+}
+
+// ------------------------------------------------------------------ debug (?debug or key D)
+// The same facts go on screen and, every 5 s, to the browser console (F12 > Console) as one line a grown-up
+// can copy and paste when reporting a problem. Frame and tracking rates are counted over the 5 s, not
+// derived from dt (which is capped at 50 ms, so it can never show under 20 fps).
+const dbg = { t: 0, frames: 0, seq: 0, fps: 0, tracked: 0, gpu: '' };
+function gpuName() {
+  if (dbg.gpu) return dbg.gpu;
+  try {
+    const gl = document.createElement('canvas').getContext('webgl');
+    const ext = gl?.getExtension('WEBGL_debug_renderer_info');
+    dbg.gpu = (ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl?.getParameter(gl.RENDERER)) || 'no WebGL';
+  } catch {
+    dbg.gpu = 'unknown';
+  }
+  return dbg.gpu;
+}
+function debugLines() {
+  const cam = pose && tracker === pose;
+  const s = cutout.stats;
+  const browser = navigator.userAgent.match(/(Edg|Chrome|Firefox|Version)\/[\d.]+/g)?.pop() ?? navigator.userAgent;
+  return [
+    `fps ${dbg.fps}   tracked ${dbg.tracked}/s   round trip ${tracker?.detectMs?.toFixed?.(0)} ms (model ${pose?.modelMs?.toFixed(0) ?? '-'} ms)`,
+    `tracking ${tracker?.delegate}${cam ? `, ${pose.useWorker ? 'worker' : 'main thread'}, ${pose.quality.name} (${pose.modelName})` : ''}   players ${g.activePlayers().length}   state ${state}   diff ${g.diff.toFixed(2)}`,
+    cam ? `camera ${pose.cameraLabel} ${pose.video.videoWidth}x${pose.video.videoHeight} (${pose.mode}, ${pose.cameraFps ? pose.cameraFps.toFixed(0) + ' fps' : 'measuring'})` : 'camera: none',
+    `cut-out ${g.view === 'cutout' && cutoutReady ? `${(s.coverage * 100).toFixed(0)}% of screen, pose mask ${s.poseActive ? 'ON' : 'LOST'}` : 'off'}   screen ${g.W}x${g.H}   fx ${g.fx ? 'on' : 'off'}`,
+    `${browser}   gpu ${gpuName()}`,
+  ];
+}
+function watchDebug(now) {
+  dbg.frames++;
+  if (!dbg.t) dbg.t = now;
+  if (now - dbg.t < 5) return;
+  const seq = pose?.frameSeq ?? 0;
+  dbg.fps = Math.round(dbg.frames / (now - dbg.t));
+  dbg.tracked = Math.round(((seq - dbg.seq) / (now - dbg.t)) * 10) / 10;
+  dbg.t = now;
+  dbg.frames = 0;
+  dbg.seq = seq;
+  if (g.debug) console.log(`[kids-camera-games debug] ${debugLines().join(' | ')}`);
 }
 
 // ------------------------------------------------------------------ main loop
@@ -700,6 +742,7 @@ function frame(ts) {
   g.now = now;
   update(dt);
   watchFrameRate(dt);
+  watchDebug(now);
   render();
 }
 
@@ -707,4 +750,4 @@ requestAnimationFrame(frame);
 boot();
 
 // handy for debugging / automated tests
-/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get pickRects() { return pickRects; }, get setup() { return setup; }, family };
+/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get carousel() { return carousel; }, get setup() { return setup; }, pickCards, family };
