@@ -70,6 +70,13 @@ test('FAMILY (mouse mode): a guest\'s kid appears on the host\'s screen where th
         return n > 20;
       }, { timeout: 15000 });
     }
+    // the guest also gets the game's own sounds from the host: a second audio stream next to the voice
+    await guest.page.waitForFunction(async () => {
+      const stats = await window.__game.family.pc.getStats();
+      let streams = 0;
+      stats.forEach((r) => { if (r.type === 'inbound-rtp' && r.kind === 'audio') streams++; });
+      return streams >= 2;
+    }, { timeout: 15000 });
     await host.page.keyboard.press('v');
     assert.equal(await host.page.evaluate(() => window.__game.family.mic.getAudioTracks()[0].enabled), false, 'V mutes the microphone');
     assert.deepEqual(host.problems, []);

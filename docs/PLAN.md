@@ -123,7 +123,7 @@ code changes. See `assets/README.md`. New art types are one line in `src/art.js`
 - [x] **M7b: the game running on a phone or tablet.** GitHub Pages hosting (HTTPS), relative paths, offline
       copy and install-as-app, touch buttons, wake lock, full-screen note, lighter defaults, tracking in a worker.
       Streaming a phone's camera to a laptop's browser is not planned (it would need a signalling server).
-- [ ] **M7c: family play across homes.** Prototype done (two windows, room code, WebRTC); the cloud pairing step and real-network tests remain. See [ONLINE.md](ONLINE.md).
+- [ ] **M7c: family play across homes.** Prototype done (room code, WebRTC, voice, game sounds) and the Cloudflare pairing function written and tested locally; deploying it and a real two-home test remain. See [ONLINE.md](ONLINE.md).
 - [ ] **M8: camera setup and "Paint your playground".** See [PLAYGROUND-PLAN.md](PLAYGROUND-PLAN.md).
 - [ ] **M9: public release.** See [PUBLIC-PLAN.md](PUBLIC-PLAN.md).
 

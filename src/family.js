@@ -8,6 +8,7 @@
 // Signalling (the two browsers finding each other) goes through a Signal: the Cloudflare pairing function
 // (cloudflare/worker.js) when a URL is configured, or a BroadcastChannel so two windows on one computer can pair
 // with no server at all. Video, voices and skeletons then go directly between the browsers. See docs/ONLINE.md.
+import { soundStream } from './audio.js';
 import { RemoteCrowd, decodeDoubleWide, makeRoomCode, normaliseCode, packPlayers } from './online.js';
 
 // Used when the pairing function cannot be asked: public STUN only (works for most home routers, no relay).
@@ -105,14 +106,14 @@ export class Family {
     this.video.muted = true;
     this.video.playsInline = true;
     this.video.autoplay = true;
-    this.audio = new Audio(); // the other home's voices
-    this.audio.autoplay = true;
+    /** @type {HTMLAudioElement[]} the other home's voices, and (on the guest) the host's game sounds */
+    this.audios = [];
     this.mic = null; // our microphone stream, when we have one
     this.micReady = Promise.resolve(null);
     this.muted = false;
     this.micFailed = false;
     // Browsers hold back sound until the page has been touched; the first key or tap lets the voices through.
-    const unlock = () => this.audio.srcObject && this.audio.play().catch(() => {});
+    const unlock = () => this.audios.forEach((a) => a.play().catch(() => {}));
     addEventListener('pointerdown', unlock);
     addEventListener('keydown', unlock);
     this.guestCut = document.createElement('canvas'); // host: the guest, cut out, ready to draw
@@ -271,13 +272,17 @@ export class Family {
     this.dc = this.pc = null;
     this.pending = [];
     this.video.srcObject = null;
-    this.audio.srcObject = null;
+    this.audios.forEach((a) => (a.srcObject = null));
+    this.audios = [];
     this.hasGuest = false;
   }
 
   _addOutgoing(/** @type {RTCPeerConnection} */ pc) {
     for (const t of this.out.getTracks()) pc.addTrack(t, this.out);
     if (this.mic) for (const t of this.mic.getAudioTracks()) pc.addTrack(t, this.mic);
+    // The host also sends the game's own sounds, so the guest hears the pops and cheers too.
+    const sounds = this.role === 'host' ? soundStream() : null;
+    if (sounds) for (const t of sounds.getAudioTracks()) pc.addTrack(t, sounds);
   }
 
   _newPc() {
@@ -288,8 +293,10 @@ export class Family {
     pc.onicecandidate = (e) => e.candidate && this.sig?.send({ from, kind: 'ice', c: e.candidate.toJSON() });
     pc.ontrack = (e) => {
       if (e.track.kind === 'audio') {
-        this.audio.srcObject = new MediaStream([e.track]);
-        this.audio.play().catch(() => {}); // refused until the page has been touched; unlock() tries again
+        const a = new Audio(); // one element per sound, so voices and game sounds play together
+        a.srcObject = new MediaStream([e.track]);
+        this.audios.push(a);
+        a.play().catch(() => {}); // refused until the page has been touched; unlock() tries again
       } else {
         this.video.srcObject = new MediaStream([e.track]);
         this.video.play().catch(() => {});
