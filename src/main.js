@@ -14,7 +14,7 @@ import { defaultSettings } from './device.js';
 import { createControls } from './controls.js';
 import { Family } from './family.js';
 import { SIGNAL_URL } from './online-config.js';
-import { SetupCheck, shouldRunSetup, saveSetupDone, frameBrightness, judgeCamera, judgeLight, judgeDistance, judgeSpeed } from './setup-check.js';
+import { SetupCheck, shouldRunSetup, saveSetupDone, frameBrightness, judgeCamera, judgeLight, judgeDistance, judgeSpeed, judgeGraphics, softwareRendering, accelerationHelp } from './setup-check.js';
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
 const ctx = canvas.getContext('2d');
@@ -455,6 +455,7 @@ function updateSetup(dt) {
       light: judgeLight(picture ? brightness : null),
       distance: judgeDistance(g.activePlayers(), g.W, g.H, pose.frameSeq),
       speed: judgeSpeed(pose.detectMs, pose.cameraFps, pose.frameSeq),
+      graphics: judgeGraphics(gpuName(), pose.delegate),
     },
     dt,
   );
@@ -570,7 +571,7 @@ function drawSetup() {
   ctx.fillStyle = 'rgba(8,12,30,0.35)';
   ctx.fillRect(0, 0, g.W, g.H);
   text(ctx, setup.passed ? 'All set! Let\'s play!' : 'Quick setup check', g.W / 2, g.H * 0.08, 80 * u, { color: setup.passed ? '#7dff6b' : '#ffe14d' });
-  const names = { camera: 'Camera', light: 'Light', distance: 'Distance', speed: 'Speed' };
+  const names = { camera: 'Camera', light: 'Light', distance: 'Distance', speed: 'Speed', graphics: 'Graphics' };
   const w = Math.min(g.W - 80 * u, 1300 * u);
   const x0 = (g.W - w) / 2;
   setup.items.forEach((c, i) => {
@@ -583,6 +584,9 @@ function drawSetup() {
     text(ctx, names[c.name] ?? c.name, x0 + 80 * u, y, 36 * u, { align: 'left', color });
     text(ctx, c.text, x0 + 300 * u, y, 32 * u, { align: 'left' });
   });
+  if (setup.items.some((c) => c.name === 'graphics' && c.ok === false)) {
+    text(ctx, accelerationHelp(navigator.userAgent), g.W / 2, g.H * 0.17 + setup.items.length * 74 * u, 30 * u, { color: '#ffe14d' });
+  }
   const how = settings.mobile ? 'tap the screen' : 'press SPACE or tap';
   const foot = setup.overdue ? `Fix what is marked ✗ and it will carry on by itself, or ${how} to play anyway` : `Grown-ups: ${how} to skip`;
   text(ctx, foot, g.W / 2, g.H - 50 * u, 32 * u, { color: setup.overdue ? '#ffe14d' : '#cfd6e6' });
@@ -661,6 +665,10 @@ function render() {
     text(ctx, settings.mobile ? 'grown-ups: tap the screen for the buttons (Start, Camera, Full screen)' : 'grown-ups: SPACE starts with everyone, or tap or move the mouse for buttons', g.W - 30 * u, g.H - 30 * u, 24 * u, { align: 'right' });
     if (pose && tracker === pose && pose.isPortrait) text(ctx, 'The camera picture is upright (portrait). Turn the phone sideways for a much wider view.', g.W / 2, g.H * 0.26, 28 * u, { color: '#ffe14d' });
     if (g.notice) text(ctx, g.notice, g.W / 2, g.H * 0.26, 28 * u, { color: '#ffb3b3' });
+    // the setup check only runs once, but acceleration can be switched off later: say so every time
+    if (pose && tracker === pose && softwareRendering(gpuName(), pose.delegate)) {
+      text(ctx, `The game may lag: graphics acceleration is off. ${accelerationHelp(navigator.userAgent)}`, g.W / 2, g.H * 0.3, 26 * u, { color: '#ffe14d' });
+    }
     if (tracker === mouse) text(ctx, 'Mouse mode: move = body & hands, click = jump, Q/W/E = poses', g.W / 2, g.H * 0.8, 28 * u);
   } else if (state === 'pick') {
     ctx.fillStyle = 'rgba(8,12,30,0.3)';
