@@ -1,0 +1,16 @@
+{
+  // Type-checks the plain JavaScript from its JSDoc comments; nothing is compiled. Run: npm run typecheck
+  "compilerOptions": {
+    "checkJs": true,
+    "allowJs": true,
+    "noEmit": true,
+    "target": "es2023",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "lib": ["es2023", "dom", "dom.iterable", "webworker.importscripts"],
+    "strict": false,
+    "skipLibCheck": true,
+    "types": []
+  },
+  "include": ["src/**/*.js"]
+}

@@ -14,6 +14,7 @@ const types = {
   '.mjs': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json',
+  '.webmanifest': 'application/manifest+json',
   '.wasm': 'application/wasm',
   '.task': 'application/octet-stream',
   '.png': 'image/png',
@@ -26,7 +27,9 @@ const types = {
   '.wav': 'audio/wav',
 };
 
-export function createGameServer() {
+// base: the folder the game is served from. '/' normally; the tests use '/kids-camera-games/' to check
+// that the game works from a sub-folder, the way GitHub Pages serves it.
+export function createGameServer({ base = '/' } = {}) {
   return http.createServer((req, res) => {
     let rel;
     try {
@@ -35,6 +38,11 @@ export function createGameServer() {
       res.writeHead(400).end();
       return;
     }
+    if (!rel.startsWith(base)) {
+      res.writeHead(404, { 'Content-Type': 'text/plain' }).end('Not found');
+      return;
+    }
+    rel = '/' + rel.slice(base.length);
     if (rel.endsWith('/')) rel += 'index.html';
     const file = path.resolve(root, '.' + rel);
     if (file !== root && !file.startsWith(root + path.sep)) {

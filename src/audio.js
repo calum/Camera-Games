@@ -4,7 +4,7 @@ let ctx = null;
 function ac() {
   if (!ctx) {
     try {
-      ctx = new (window.AudioContext || window.webkitAudioContext)();
+      ctx = new (window.AudioContext || /** @type {any} */ (window).webkitAudioContext)();
     } catch {
       return null;
     }

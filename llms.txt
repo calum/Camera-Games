@@ -3,8 +3,10 @@
 > A webcam-controlled movement game for kids that runs in a web browser. A camera on the TV tracks up to four children with MediaPipe's pose model, cuts them out of the picture and places them in a cartoon world while they pop bubbles, dodge rocks, jump waves and copy dance poses. Plain JavaScript ES modules on a canvas: no build step, no runtime dependencies, works offline.
 
 Key facts for anyone (or any model) reading this repository:
-- Run it with `node server.mjs` and open http://localhost:8137 (or `start.bat` on Windows). Needs Node 18+ to play (Node 21+ to run the tests) and a webcam; `?mouse` works without a camera.
-- Tests: `npm test` (135 unit tests, seconds) and `npm run test:e2e` (22 real-browser tests with a fake webcam, about 7 minutes).
+- Play it at https://calum.github.io/kids-camera-games/ (GitHub Pages, static, works offline after the first visit), or run `node server.mjs` and open http://localhost:8137 (or `start.bat` on Windows). Needs Node 18+ to run locally (Node 21+ for the tests) and a camera; `?mouse` works without one.
+- Runs on laptops, tablets and phones: pose tracking runs in a Web Worker so drawing stays smooth, a quality ladder steps down on slow devices, and touch devices get on-screen buttons.
+- Tests: `npm run typecheck` (JSDoc types via tsc, no build), `npm test` (169 unit tests, seconds) and `npm run test:e2e` (28 real-browser tests with a fake webcam, about 10 minutes).
+- Adding a level: one file in src/levels/, listed in src/levels/index.js; see docs/ADDING-GAMES.md.
 - Camera: asks for a 16:9 picture (full webcam field of view), falls back to 640x480 on a slow camera; press C to switch cameras (e.g. a phone webcam app); `?cam=wide|standard` pins the size.
 - The game logic only reads a small "player" object produced by the tracker, so tracking can be swapped without touching levels.
 - Poses are measured in shoulder widths (not torso length) so small children work; nothing in tracking switches instantly on or off.
@@ -14,14 +16,19 @@ Key facts for anyone (or any model) reading this repository:
 
 - [README](https://github.com/calum/kids-camera-games/blob/main/README.md): what it is, how to run and play it, controls, troubleshooting, how it works, tests, credits.
 - [CLAUDE.md](https://github.com/calum/kids-camera-games/blob/main/CLAUDE.md): guidance for AI coding assistants: commands, architecture, invariants to preserve, pitfalls, conventions.
+- [Adding and changing games](https://github.com/calum/kids-camera-games/blob/main/docs/ADDING-GAMES.md): how a level works, the player object, helpers, testing, design rules from playtesting, checklist.
 - [Plan and design notes](https://github.com/calum/kids-camera-games/blob/main/docs/PLAN.md): goals, why web-first, level designs, small-kid tracking decisions, cut-out design, hardware notes, roadmap.
 - [Custom art guide](https://github.com/calum/kids-camera-games/blob/main/assets/README.md): PNG file names that replace the built-in graphics and backgrounds.
 
 ## Source
 
 - [src/main.js](https://github.com/calum/kids-camera-games/blob/main/src/main.js): game loop, state machine, HUD, keyboard controls.
-- [src/levels.js](https://github.com/calum/kids-camera-games/blob/main/src/levels.js): the four levels (bubbles, dodge, jump, dance) and their difficulty constants.
-- [src/tracker.js](https://github.com/calum/kids-camera-games/blob/main/src/tracker.js): camera and pose model wrapper, skeleton to player signals (hands, body circles, jump, poses), mouse fallback.
+- [src/levels/](https://github.com/calum/kids-camera-games/tree/main/src/levels): one file per level (bubbles, dodge, jump, dance), index.js (the list), kit.js (shared helpers), _template.js (a level to copy).
+- [src/types.js](https://github.com/calum/kids-camera-games/blob/main/src/types.js): JSDoc types for the player, the game object and a level.
+- [src/people.js](https://github.com/calum/kids-camera-games/blob/main/src/people.js): who is who: probation for new bodies (pets, passers-by), matching, recognising kids who come back.
+- [src/pose-worker.js](https://github.com/calum/kids-camera-games/blob/main/src/pose-worker.js): Web Worker that runs the pose model off the main thread.
+- [src/controls.js](https://github.com/calum/kids-camera-games/blob/main/src/controls.js): on-screen buttons for touch screens, full-screen note, screen wake lock.
+- [src/tracker.js](https://github.com/calum/kids-camera-games/blob/main/src/tracker.js): camera and pose model wrapper (worker or main thread), quality ladder, skeleton to player signals (hands, body circles, jump, poses), mouse fallback.
 - [src/lobby.js](https://github.com/calum/kids-camera-games/blob/main/src/lobby.js): join-by-arms-out start logic.
 - [src/person-mask.js](https://github.com/calum/kids-camera-games/blob/main/src/person-mask.js): pure logic that blends the pose silhouette with motion and fades it, so a glitch never pops a kid off screen.
 - [src/cutout.js](https://github.com/calum/kids-camera-games/blob/main/src/cutout.js): browser glue that cuts the kids out of the camera frame.

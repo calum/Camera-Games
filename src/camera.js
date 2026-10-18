@@ -15,14 +15,15 @@ export const parseMode = (v) => (v === 'wide' || v === 'standard' ? v : null);
 
 // Constraints for getUserMedia. Sizes and frame rate are "ideal" (a wish, not a demand) so a camera that
 // can't do 720p still works. A specific camera is requested with `exact` so we never silently get another.
-export function cameraConstraints({ deviceId = null, mode = 'wide' } = {}) {
+// facingMode (no deviceId): 'user' = the front camera, 'environment' = a phone's back camera (a wish, not a demand).
+export function cameraConstraints({ deviceId = null, mode = 'wide', facingMode = 'user' } = {}) {
   const size = MODES[mode] ?? MODES.wide;
   return {
     video: {
       width: { ideal: size.width },
       height: { ideal: size.height },
       frameRate: { ideal: 30 },
-      ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: 'user' }),
+      ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode }),
     },
     audio: false,
   };
