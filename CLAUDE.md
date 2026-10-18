@@ -28,7 +28,7 @@ or screens. No camera is needed for either: the e2e tests feed a photo through a
 ## Architecture
 
 ```
-src/main.js        game loop, state machine (loading > (setup) > menu > pick > intro > play > outro > pick ...), HUD, keys + actions
+src/main.js        game loop, state machine (loading > (setup) > menu > calibrate > pick > intro > play > outro > pick ...), HUD, keys + actions
 src/types.js       JSDoc typedefs: Player, Game, Level, Scene. Import with /** @import { Player } from './types.js' */
 src/tracker.js     PoseTracker (camera + engine + quality ladder) and MouseTracker; computeFeatures() -> a "player"
 src/pose-worker.js CLASSIC Web Worker running MediaPipe (it needs importScripts); returns landmarks, mask, looks
@@ -56,6 +56,7 @@ src/draw.js        text, skeleton, hearts, pose icon helpers
 src/audio.js       synthesized sound effects (tones + filtered noise, no files), a few per level
 src/ease.js        pure: auto-ease. Misses (g.miss()) and dry spells lower g.diff; a good spell restores it
 src/setup-check.js pure: first-launch setup check (camera, light, distance, speed) with plain-word fixes
+src/calibrate.js   pure: the play space. Kids walk left then right as far as they can before the first pick; g.area
 src/health.js      pure: self-healing watchdog. Spots a lost camera or a hung tracker; tab sleep is not a fault
 src/recording.js   pure: debug recordings. Rolling last minute of tracking answers, samples and events; file format
 src/replay.js      ReplayTracker: plays a recording through ingestLandmarks (the live path); playRecording for tests
@@ -111,6 +112,13 @@ Key ideas to preserve:
 - **The setup check** (state `setup`) runs on the first launch with a camera, until it has passed once
   (`kcg.setupDone` in localStorage). `?setup` shows it again, `?nosetup` or `?level=` skip it, SPACE/Esc/tap skip it.
   `openGame` in the e2e helpers marks it done unless called with `{ setup: true }`.
+- **The play space** (state `calibrate`, `calibrate.js`) runs on every start, between joining and the first pick,
+  and again after a camera switch or P in the picker: the kids walk as far as they can each way, because a wall
+  or sofa can be in the picture where nobody can stand. The result is `g.area` (fractions of the width: `x0..x1`
+  where a body can be, `reach0..reach1` where hands can get to). **Levels place anything a kid must touch, catch
+  or stand in with `reachX(g, f)` / `standX(g, f)` from `kit.js`, never `f * g.W`**; without a calibration they
+  equal `f * g.W`. Things that sweep the whole screen (waves, logs, birds) don't need it. Mouse mode skips it;
+  `?nocal` and `?level=` skip it, SPACE/Esc/tap skip the rest. `openGame` adds `?nocal` unless `{ calibrate: true }`.
 - **Debug recordings** (`?debug`: R saves, G adds screen video, `?replay` or a dropped file plays one back). Nothing
   is created until debug is on (`PoseTracker.onAnswer` stays null), video is never on by itself (it shows the
   kids), and nothing is uploaded. When Calum sends a recording, replay it, fix the bug, then add it to

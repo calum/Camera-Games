@@ -8,7 +8,7 @@ import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
 import { drawArt } from '../art.js';
 import { text } from '../draw.js';
-import { rand, pick, clamp, bodyHit, loseHeart } from './kit.js';
+import { rand, pick, clamp, bodyHit, loseHeart, reachX, standX } from './kit.js';
 
 const DURATION = 45;
 const WARN = 0.9; // seconds of red "!" column before a rock falls
@@ -106,7 +106,9 @@ const avalanche = {
     // The big boulder starts BIG_BEFORE_END seconds before the end; nothing else is spawned then.
     if (!this.big && !this.bigDone && this.elapsed >= DURATION - BIG_BEFORE_END) {
       const w = g.W * BIG_GAP;
-      this.big = { t: 0, gapW: w, gapX: rand(w / 2 + 0.04 * g.W, g.W - w / 2 - 0.04 * g.W), judged: false };
+      // the gap is somewhere the kids can stand (the play space), and fully on screen
+      const gapX = clamp(standX(g, rand(0.1, 0.9)), w / 2 + 0.04 * g.W, g.W - w / 2 - 0.04 * g.W);
+      this.big = { t: 0, gapW: w, gapX, judged: false };
       sfx.rumble();
     }
     const bigBusy = !!this.big;
@@ -115,7 +117,7 @@ const avalanche = {
       const n = Math.max(1, players.length);
       this.spawn = Math.max(0.45, (1.35 - 0.015 * this.elapsed) / (1 + 0.35 * (n - 1)) / g.diff);
       // Half the rocks are aimed at a kid so standing still isn't a winning plan.
-      const target = players.length && Math.random() < 0.5 ? pick(players).cx : rand(0.06, 0.94) * g.W;
+      const target = players.length && Math.random() < 0.5 ? pick(players).cx : reachX(g, rand(0.06, 0.94));
       this.rocks.push({
         x: Math.min(g.W * 0.97, Math.max(g.W * 0.03, target + rand(-60, 60) * u)),
         y: -120 * u,

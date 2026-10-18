@@ -3,7 +3,7 @@
 import { sfx } from '../audio.js';
 import { drawArt } from '../art.js';
 import { text } from '../draw.js';
-import { rand, handTouching } from './kit.js';
+import { rand, handTouching, reachX } from './kit.js';
 
 /** @satisfies {Level} */
 const bubbles = {
@@ -27,7 +27,7 @@ const bubbles = {
       this.spawn = Math.max(0.35, 0.85 / Math.sqrt(Math.max(1, players.length)) / g.diff);
       const r = rand(55, 90) * u;
       this.items.push({
-        x0: rand(0.08, 0.92) * g.W,
+        x0: reachX(g, rand(0.08, 0.92)), // only where hands can get to (the play space)
         x: 0,
         y: g.H + r,
         r,

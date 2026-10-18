@@ -146,7 +146,7 @@ test('layout: the middle card is the biggest, at the top centre, with smaller ne
     assert.equal(mid.i, 3);
     assert.equal(cards.at(-1), mid, 'drawn last, on top');
     assert.ok(Math.abs(mid.rect.x + mid.rect.w / 2 - W / 2) < 1, 'centred');
-    assert.ok(mid.rect.y + mid.rect.h < H * 0.7, 'in the top part of the screen');
+    assert.ok(mid.rect.y + mid.rect.h <= H * 0.46, 'in the top band, so the kids can see themselves under it');
     const prev = cards.find((c) => c.off === -1);
     const next = cards.find((c) => c.off === 1);
     assert.equal(prev.i, 2);

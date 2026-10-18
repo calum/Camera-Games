@@ -786,6 +786,32 @@ test('AUTO-START (real camera): a kid holding their arms out starts the game by 
   }
 });
 
+test('PLAY SPACE (real camera): after joining, the kids show their play space before the picker; P redoes it, Space skips it', { skip }, async () => {
+  const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
+  try {
+    const { page, problems } = await openGame(browser, url + '?model=full', { calibrate: true });
+    await waitForState(page, 'menu', 60000);
+    await waitForPerson(page);
+    await page.keyboard.press('Space');
+    await waitForState(page, 'calibrate', 5000);
+    // the photo kid stands still, so each side is believed after a few seconds where they stand
+    await waitForState(page, 'pick', 120000);
+    const r = await page.evaluate(() => ({ area: window.__game.g.area, cx: window.__game.g.players[0]?.cx / window.__game.g.W }));
+    assert.ok(r.area, 'the play space was measured');
+    assert.ok(r.area.x0 <= r.cx && r.cx <= r.area.x1, `the kid is inside their play space (${JSON.stringify(r)})`);
+    assert.ok(r.area.x1 - r.area.x0 >= 0.3 - 1e-9, 'a kid who stood still never shrinks the game to nothing');
+    assert.ok(r.area.reach0 <= r.area.x0 && r.area.reach1 >= r.area.x1);
+    // P in the picker measures it again; a grown-up can skip with Space, back to the picker
+    await page.keyboard.press('p');
+    await waitForState(page, 'calibrate', 3000);
+    await page.keyboard.press('Space');
+    await waitForState(page, 'pick', 3000);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
 test('AUTO-START (mouse mode): holding the airplane pose (W) for 3s starts the game; releasing early does not', { skip }, async () => {
   const browser = await launch(exe);
   try {

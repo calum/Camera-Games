@@ -144,7 +144,7 @@ tracked on small kids. The old torso-based pose rules rejected a toddler with bo
 **Hit tests** ([`src/levels/kit.js`](../src/levels/kit.js)):
 
 ```js
-import { rand, pick, clamp, handTouching, bodyHit } from './kit.js';
+import { rand, pick, clamp, handTouching, bodyHit, reachX, standX } from './kit.js';
 
 const p = handTouching(players, x, y, r, 30 * g.u); // a player whose hand is within r + 30u, or null
 const q = bodyHit(players, x, y, r);                 // a player whose body overlaps the circle, or null
@@ -214,6 +214,10 @@ These come from playtesting with our own kids.
    a fight over one target.
 9. **Keep it cheap to draw.** Phones and tablets run this. Avoid hundreds of gradients or `shadowBlur` per
    frame, and skip extras when `g.fx` is false.
+10. **Stay in the play space.** A sofa or a wall can be in the picture where nobody can stand. Before the
+   picker the kids show how far they can go (`src/calibrate.js`), so place anything a kid must touch, catch or
+   stand in with `reachX(g, f)` (hands) or `standX(g, f)` (bodies) from `kit.js`, with `f` from 0 to 1, rather
+   than `f * g.W`. Without a calibration they are the same thing.
 
 Ideas that fit these rules are listed under M4 in [PLAN.md](PLAN.md#roadmap).
 

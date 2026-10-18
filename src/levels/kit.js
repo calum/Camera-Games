@@ -1,11 +1,28 @@
 // Small helpers shared by the levels, so each level file stays about its own idea. See docs/ADDING-GAMES.md.
 /** @import { Player, Level, Game } from '../types.js' */
 import { sfx } from '../audio.js';
+import { FULL_AREA } from '../calibrate.js';
 
 export const rand = (/** @type {number} */ a, /** @type {number} */ b) => a + Math.random() * (b - a);
 /** @template T @param {T[]} arr @returns {T} */
 export const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
 export const clamp = (/** @type {number} */ v, /** @type {number} */ lo, /** @type {number} */ hi) => Math.min(hi, Math.max(lo, v));
+
+// The play space (calibrate.js): the part of the picture the kids showed they can really get to, before the
+// picker. A wall or a sofa can be in the picture, and a level must never put something to touch, catch or stand
+// in over it. Without a calibration (?level=, tests) it is the whole screen, so these are then plain `f * g.W`.
+//   reachX(g, f): f = 0..1 across where hands can get to: bubbles, stars, balloons, rocks.
+//   standX(g, f): f = 0..1 across where a body can stand: a safe gap, a treasure column.
+/** @param {Game} g @param {number} f */
+export const reachX = (g, f) => {
+  const a = g.area ?? FULL_AREA;
+  return (a.reach0 + f * (a.reach1 - a.reach0)) * g.W;
+};
+/** @param {Game} g @param {number} f */
+export const standX = (g, f) => {
+  const a = g.area ?? FULL_AREA;
+  return (a.x0 + f * (a.x1 - a.x0)) * g.W;
+};
 
 /**
  * The first player whose hand is within `r + slack` of (x, y), or null. Hands are wrists and index fingertips.

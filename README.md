@@ -28,7 +28,14 @@ Eleven short levels (30 to 60 seconds each), in the order they appear in the pic
 Every level has its own synthesized sound effects, and the game quietly eases off when the kids keep missing
 (and creeps back up after a good spell), so nobody gets stuck on a level that is too hard.
 
-After joining, the kids choose what to play on the **level picker**, a carousel of big picture cards: the
+After joining, the kids **show the game their play space** (about 10 seconds, on every start): a big arrow says
+"walk this way as far as you can go", first to one side, then the other, and a green strip grows along the floor
+as they go. A wall, a sofa or a table can be in the camera picture while nobody can stand there; the levels then
+keep bubbles, stars, balloons, treasure and the safe gap inside the space the kids really reached. **Space**,
+**Esc** or a tap skips it, and **P** in the picker measures it again (after a camera switch it is measured again
+by itself).
+
+Then the kids choose what to play on the **level picker**, a carousel of big picture cards: the
 current game in the middle, the previous and next ones either side (plus a **Surprise!** card). Waving a hand
 out to the right shows the next game, to the left the previous one, and **both arms straight up** for about a
 second plays the game in the middle. After each level the picker comes back with that game in the middle, so
@@ -104,6 +111,7 @@ details and [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md) how the pairi
 |---|---|
 | Space / Enter | Start with everyone (on to the level picker); in the picker, play the game in the middle |
 | ← / → | In the picker, show the previous / next game |
+| P | In the picker, show the game the play space again (walk left, then right) |
 | F | Fullscreen |
 | 1 - 9 | Play that level (by its place in the list) |
 | N | Next level |
@@ -128,7 +136,8 @@ URL options: `?mouse`, `?debug` (debug info on screen, a summary line in the bro
 seconds, and recording the last minute, see below), `?replay` (play a debug recording back), `?lite` (turn off glow effects on a slow machine) or `?fx` (keep them on), `?model=lite` or
 `?model=full`, `?quality=high|medium|low|lowest` (pin the tracking quality, see below), `?view=camera`,
 `?cam=wide` or `?cam=standard` (picture size, see below), `?level=<id>` (start straight in one level),
-`?worker=off` (track on the main thread), `?setup` / `?nosetup` (show or skip the setup check),
+`?worker=off` (track on the main thread), `?setup` / `?nosetup` (show or skip the setup check), `?nocal` (skip
+the play-space check),
 `?room=<code>` (join a family room; the host's link carries it), `?signal=<url>` (use another pairing service,
 for testing), `?nosw` (don't install the offline copy).
 
@@ -212,6 +221,7 @@ src/recording.js  replay.js             debug recordings (the last minute of pla
 src/debug-record.js                     saving a recording as a download, optional screen video
 src/picker.js                           the level picker carousel
 src/setup-check.js                      the first-launch setup check (camera, light, distance, speed, GPU)
+src/calibrate.js                        the play space: where the kids can really go (walls, sofas), measured on every start
 src/controls.js  device.js              on-screen buttons, full-screen note, wake lock; phone/laptop defaults
 src/levels/                             one file per level, index.js (the list), kit.js (helpers), _template.js
 src/types.js                            JSDoc types: Player, Game, Level (checked by npm run typecheck)

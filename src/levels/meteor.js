@@ -6,7 +6,7 @@
 import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
 import { text } from '../draw.js';
-import { rand, handTouching, bodyHit, loseHeart } from './kit.js';
+import { rand, handTouching, bodyHit, loseHeart, reachX } from './kit.js';
 
 export const DURATION = 40;
 export const GOLD_EVERY = 8; // every 8th star is a big golden shooting star
@@ -76,7 +76,7 @@ const meteor = {
   spawnItem(g, players) {
     const u = g.u;
     if (Math.random() < meteorShare(this.elapsed, this.duration)) {
-      const target = players.length && Math.random() < AIM_CHANCE ? pick(players).cx : rand(0.06, 0.94) * g.W;
+      const target = players.length && Math.random() < AIM_CHANCE ? pick(players).cx : reachX(g, rand(0.06, 0.94));
       this.items.push({
         kind: 'meteor',
         x: Math.min(g.W * 0.97, Math.max(g.W * 0.03, target + rand(-60, 60) * u)),
@@ -92,7 +92,7 @@ const meteor = {
     const r = rand(...STAR_R) * u * (gold ? GOLD_R_BONUS : 1);
     this.items.push({
       kind: gold ? 'gold' : 'star',
-      x0: rand(0.08, 0.92) * g.W,
+      x0: reachX(g, rand(0.08, 0.92)),
       x: 0,
       y: -r,
       r,

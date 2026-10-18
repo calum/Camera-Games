@@ -3,7 +3,7 @@
 import { sfx } from '../audio.js';
 import { drawArt } from '../art.js';
 import { text } from '../draw.js';
-import { rand, pick, bodyHit, loseHeart } from './kit.js';
+import { rand, pick, bodyHit, loseHeart, reachX } from './kit.js';
 
 /** @satisfies {Level} */
 const dodge = {
@@ -33,7 +33,7 @@ const dodge = {
       const n = Math.max(1, players.length);
       this.spawn = Math.max(0.45, (1.35 - 0.015 * this.elapsed) / (1 + 0.35 * (n - 1)) / g.diff);
       // Half the rocks are aimed at a kid so standing still isn't a winning plan.
-      const target = players.length && Math.random() < 0.5 ? pick(players).cx : rand(0.06, 0.94) * g.W;
+      const target = players.length && Math.random() < 0.5 ? pick(players).cx : reachX(g, rand(0.06, 0.94)); // a rock over the sofa would be a free point
       this.rocks.push({
         x: Math.min(g.W * 0.97, Math.max(g.W * 0.03, target + rand(-60, 60) * u)),
         y: -120 * u,
