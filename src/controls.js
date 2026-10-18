@@ -51,7 +51,7 @@ export function createControls(actions, info) {
   function refresh() {
     const s = info.state();
     buttons.start.hidden = !(s === 'menu' || s === 'pick');
-    buttons.next.hidden = s === 'menu' || s === 'pick' || s === 'loading';
+    buttons.next.hidden = s === 'menu' || s === 'pick' || s === 'loading' || s === 'setup';
     buttons.menu.hidden = s === 'menu' || s === 'loading';
     buttons.camera.hidden = !info.hasCamera();
     buttons.family.hidden = !(s === 'menu' || info.family?.());

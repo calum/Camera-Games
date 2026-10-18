@@ -14,6 +14,7 @@ import { defaultSettings } from './device.js';
 import { createControls } from './controls.js';
 import { Family } from './family.js';
 import { SIGNAL_URL } from './online-config.js';
+import { SetupCheck, shouldRunSetup, saveSetupDone, frameBrightness, judgeCamera, judgeLight, judgeDistance, judgeSpeed } from './setup-check.js';
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
 const ctx = canvas.getContext('2d');
@@ -84,7 +85,7 @@ const backdrops = new Backdrops();
 let cutoutReady = false;
 
 // ------------------------------------------------------------------ state machine
-// loading -> menu (arms out to join) -> pick (choose a level) -> intro -> play -> outro -> pick ...
+// loading -> (setup, the first time) -> menu (arms out to join) -> pick (choose a level) -> intro -> play -> outro -> pick ...
 let state = 'loading';
 let stateT = 0;
 let levelIdx = 0;
@@ -101,6 +102,7 @@ const pickCards = () => carouselLayout(choices.length, carousel.pos, g.W, g.H);
 const family = new Family({ canvas, search: location.search, origin: location.origin + location.pathname, signal: params.get('signal') || SIGNAL_URL });
 let outroMsg = '';
 let status = 'Loading...';
+let setup = new SetupCheck();
 
 function setState(s) {
   state = s;
@@ -220,7 +222,10 @@ async function boot() {
     tracker = pose;
     if (pose.cameraCount > 1) toast(`Camera: ${pose.cameraLabel}  (${pose.cameraCount} found, press C to switch)`, 5);
     resize();
-    setState('menu');
+    if (shouldRunSetup(params, globalThis.localStorage)) {
+      setup = new SetupCheck();
+      setState('setup');
+    } else setState('menu');
   } catch (e) {
     console.error(e);
     g.notice = `No camera (${e.message || e}). Using the mouse instead.`;
@@ -262,7 +267,8 @@ window.addEventListener('resize', resize);
 // What the grown-up can do. Keys and the on-screen buttons (controls.js) both call these.
 const actions = {
   start() {
-    if (state === 'menu') startGame();
+    if (state === 'setup') toMenu(); // skip the setup check
+    else if (state === 'menu') startGame();
     else if (state === 'pick') choose(carousel.index); // the game in the middle
   },
   next() {
@@ -270,7 +276,8 @@ const actions = {
   },
   // Back one step: from a level to the picker, from the picker to the join screen.
   menu() {
-    if (inLevel()) toPick();
+    if (state === 'setup') toMenu();
+    else if (inLevel()) toPick();
     else if (state === 'pick') toMenu();
   },
   fullscreen() {
@@ -321,6 +328,7 @@ window.addEventListener('keydown', (e) => {
 window.addEventListener('pointerdown', unlock);
 // A grown-up can tap (or click) the picker: a side card scrolls to it, the middle card plays.
 canvas.addEventListener('pointerdown', (e) => {
+  if (state === 'setup') return toMenu(); // a tap skips the setup check
   if (state !== 'pick') return;
   const r = canvas.getBoundingClientRect();
   const card = carouselCardAt(pickCards(), { x: ((e.clientX - r.left) * canvas.width) / r.width, y: ((e.clientY - r.top) * canvas.height) / r.height });
@@ -389,7 +397,9 @@ function update(dt) {
   }
   g.particles = g.particles.filter((q) => q.life > 0);
 
-  if (state === 'menu') {
+  if (state === 'setup') {
+    updateSetup(dt);
+  } else if (state === 'menu') {
     // Arms out for 3s starts the game with exactly the kids who have their arms out.
     const joinedIds = lobby.update(g.activePlayers(), g.now, dt);
     if (joinedIds) startGame(joinedIds);
@@ -423,6 +433,35 @@ function update(dt) {
   }
 }
 
+// The setup check: how bright the picture is comes from a tiny copy of the camera frame, twice a second.
+const shot = document.createElement('canvas');
+shot.width = 32;
+shot.height = 18;
+const shotCtx = shot.getContext('2d', { willReadFrequently: true });
+let brightness = null;
+let shotT = 0;
+function updateSetup(dt) {
+  const v = pose.video;
+  const picture = v.readyState >= 2 && v.videoWidth > 0;
+  shotT -= dt;
+  if (picture && shotT <= 0) {
+    shotT = 0.5;
+    shotCtx.drawImage(v, 0, 0, shot.width, shot.height);
+    brightness = frameBrightness(shotCtx.getImageData(0, 0, shot.width, shot.height).data);
+  }
+  setup.update(
+    {
+      camera: judgeCamera(picture, pose.cameraLabel),
+      light: judgeLight(picture ? brightness : null),
+      distance: judgeDistance(g.activePlayers(), g.W, g.H, pose.frameSeq),
+      speed: judgeSpeed(pose.detectMs, pose.cameraFps, pose.frameSeq),
+    },
+    dt,
+  );
+  if (setup.passed) saveSetupDone(globalThis.localStorage); // remembered: not shown again
+  if (setup.finished) toMenu();
+}
+
 // People who show up while a game is under way only watch (they are in the picture, but can't score or be hit),
 // so a parent walking past or a visiting cousin never barges in. To play they hold their arms out for 2 s.
 // A kid who was playing and steps out of view is recognised when they come back (people.js) and carries on.
@@ -454,7 +493,7 @@ function watchFrameRate(dt) {
 // ------------------------------------------------------------------ render
 // Which cartoon world to show: one per level, a meadow in the menu and the picker.
 function backdropId() {
-  if (state === 'menu' || state === 'pick' || state === 'loading' || !g.level) return 'menu';
+  if (state === 'menu' || state === 'pick' || state === 'loading' || state === 'setup' || !g.level) return 'menu';
   return typeof g.level.backdrop === 'string' ? g.level.backdrop : g.level.id;
 }
 
@@ -525,6 +564,30 @@ function drawPlayerCount() {
   text(ctx, n ? `${n} player${n > 1 ? 's' : ''} ${word}!` : 'Step into view...', g.W / 2, g.H - 60 * g.u, 54 * g.u);
 }
 
+// A row per check: a tick, a cross or dots, and what to do about it. Kept to the top half so the kids stay visible.
+function drawSetup() {
+  const u = g.u;
+  ctx.fillStyle = 'rgba(8,12,30,0.35)';
+  ctx.fillRect(0, 0, g.W, g.H);
+  text(ctx, setup.passed ? 'All set! Let\'s play!' : 'Quick setup check', g.W / 2, g.H * 0.08, 80 * u, { color: setup.passed ? '#7dff6b' : '#ffe14d' });
+  const names = { camera: 'Camera', light: 'Light', distance: 'Distance', speed: 'Speed' };
+  const w = Math.min(g.W - 80 * u, 1300 * u);
+  const x0 = (g.W - w) / 2;
+  setup.items.forEach((c, i) => {
+    const y = g.H * 0.17 + i * 74 * u;
+    ctx.fillStyle = 'rgba(8,12,30,0.65)';
+    ctx.fillRect(x0, y - 32 * u, w, 64 * u);
+    const mark = c.ok === true ? '✓' : c.ok === false ? '✗' : '…';
+    const color = c.ok === true ? '#7dff6b' : c.ok === false ? '#ff8a80' : '#cfd6e6';
+    text(ctx, mark, x0 + 40 * u, y, 44 * u, { color });
+    text(ctx, names[c.name] ?? c.name, x0 + 80 * u, y, 36 * u, { align: 'left', color });
+    text(ctx, c.text, x0 + 300 * u, y, 32 * u, { align: 'left' });
+  });
+  const how = settings.mobile ? 'tap the screen' : 'press SPACE or tap';
+  const foot = setup.overdue ? `Fix what is marked ✗ and it will carry on by itself, or ${how} to play anyway` : `Grown-ups: ${how} to skip`;
+  text(ctx, foot, g.W / 2, g.H - 50 * u, 32 * u, { color: setup.overdue ? '#ffe14d' : '#cfd6e6' });
+}
+
 // The friendly screen while the camera or the tracking is put right (see PoseTracker._heal). After a few seconds
 // it suggests what a grown-up can check, in case it can't fix itself.
 function drawReconnecting() {
@@ -562,7 +625,8 @@ function render() {
   for (const p of g.players) drawSkeleton(ctx, p, g);
   drawParticles();
 
-  if (state === 'menu') {
+  if (state === 'setup') drawSetup();
+  else if (state === 'menu') {
     ctx.fillStyle = 'rgba(8,12,30,0.3)';
     ctx.fillRect(0, 0, g.W, g.H);
     // All the words live in a band at the top so they never cover the kids.
@@ -713,4 +777,4 @@ requestAnimationFrame(frame);
 boot();
 
 // handy for debugging / automated tests
-/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get carousel() { return carousel; }, pickCards, family };
+/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get carousel() { return carousel; }, get setup() { return setup; }, pickCards, family };

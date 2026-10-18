@@ -925,6 +925,36 @@ test('SMOOTH DRAWING: the pose model runs in a worker, so the game keeps drawing
   }
 });
 
+test('SETUP CHECK: a first launch checks camera, light, distance and speed in plain words; SPACE skips it; it is not remembered until it passes', { skip }, async () => {
+  const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
+  try {
+    const { page, problems } = await openGame(browser, url + '?model=full', { setup: true });
+    await waitForState(page, 'setup', 60000);
+    // wait for every check to have an answer (speed needs a few tracked frames)
+    await page.waitForFunction(() => window.__game.setup.items.length === 4 && window.__game.setup.items.every((c) => c.ok !== null), { timeout: 300000, polling: 200 });
+    const items = await page.evaluate(() => Object.fromEntries(window.__game.setup.items.map((c) => [c.name, c])));
+    assert.deepEqual(Object.keys(items), ['camera', 'light', 'distance', 'speed']);
+    assert.equal(items.camera.ok, true, items.camera.text);
+    assert.equal(items.light.ok, true, `the photo is evenly lit: ${items.light.text}`);
+    for (const c of Object.values(items)) assert.ok(c.text.length > 5, `each check says something: ${c.name}`);
+    await page.keyboard.press('Space');
+    await waitForState(page, 'menu', 5000);
+    const passed = await page.evaluate(() => window.__game.setup.passed);
+    assert.equal(await page.evaluate(() => localStorage.getItem('kcg.setupDone')), passed ? '1' : null, 'only a pass is remembered');
+    if (!passed) {
+      await page.reload({ waitUntil: 'load' });
+      await waitForState(page, 'setup', 60000);
+    }
+    // once remembered it is skipped
+    await page.evaluate(() => localStorage.setItem('kcg.setupDone', '1'));
+    await page.reload({ waitUntil: 'load' });
+    await waitForState(page, 'menu', 60000);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
 test('SELF-HEALING: an unplugged camera shows a reconnecting screen, the game waits, and the camera comes back by itself', { skip }, async () => {
   const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
   try {
