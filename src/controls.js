@@ -52,8 +52,8 @@ export function createControls(actions, info) {
   }
   function refresh() {
     const s = info.state();
-    buttons.start.hidden = !(s === 'menu' || s === 'pick');
-    buttons.next.hidden = s === 'menu' || s === 'pick' || s === 'loading' || s === 'setup';
+    buttons.start.hidden = !(s === 'menu' || s === 'pick' || s === 'calibrate'); // in the play-space check it skips
+    buttons.next.hidden = s === 'menu' || s === 'pick' || s === 'loading' || s === 'setup' || s === 'calibrate';
     buttons.menu.hidden = s === 'menu' || s === 'loading';
     buttons.camera.hidden = !info.hasCamera();
     buttons.family.hidden = !(s === 'menu' || info.family?.());

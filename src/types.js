@@ -69,6 +69,8 @@
  * @property {Player[]} players   everyone the tracker sees, including kids who are only watching
  * @property {{ score: number, hearts: number, maxHearts: number }} team
  * @property {Level | null} level the level being played
+ * @property {import('./calibrate.js').PlayArea | null} [area]  the play space the kids showed before the picker
+ *                                (fractions of the width); read it through kit.js reachX / standX
  * @property {() => Player[]} activePlayers   visible AND playing: use this for gameplay
  * @property {(p: Player | null, pts: number, x: number, y: number) => void} score  add points (p = null: team only)
  * @property {(x: number, y: number, color: string, n?: number) => void} burst     a confetti burst

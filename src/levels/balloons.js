@@ -6,7 +6,7 @@
 import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
 import { text } from '../draw.js';
-import { rand } from './kit.js';
+import { rand, reachX } from './kit.js';
 
 const GRAVITY = 170; // u/s^2: floaty, so little arms have time
 const MAX_FALL = 240; // u/s: air drag caps the fall speed
@@ -61,7 +61,7 @@ const balloons = {
     const u = g.u;
     const r = rand(BALLOON_R[0], BALLOON_R[1]) * u;
     this.items.push({
-      x: rand(0.15, 0.85) * g.W,
+      x: reachX(g, rand(0.15, 0.85)), // in the play space (calibrate.js)
       y: -r,
       vx: rand(-40, 40) * u,
       vy: 60 * u,
@@ -96,6 +96,9 @@ const balloons = {
       this.prevHands.set(p.id, p.hands.map((h) => ({ x: h.x, y: h.y })));
     }
 
+    // the sides they bounce off are the edges of the play space, so a balloon never drifts over the sofa
+    const wallL = reachX(g, 0);
+    const wallR = reachX(g, 1);
     for (const b of this.items) {
       b.cool -= dt;
       const ease = g.ease ?? 1; // auto-ease (ease.js): floatier when balloons keep landing
@@ -104,11 +107,11 @@ const balloons = {
       b.x += b.vx * dt;
       b.y += b.vy * dt;
       // bounce off the sides and the top, so balloons stay in play
-      if (b.x < b.r) {
-        b.x = b.r;
+      if (b.x < wallL + b.r) {
+        b.x = wallL + b.r;
         b.vx = Math.abs(b.vx);
-      } else if (b.x > g.W - b.r) {
-        b.x = g.W - b.r;
+      } else if (b.x > wallR - b.r) {
+        b.x = wallR - b.r;
         b.vx = -Math.abs(b.vx);
       }
       if (b.y < b.r && b.vy < 0) {

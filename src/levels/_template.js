@@ -14,7 +14,7 @@
 /** @import { Level } from '../types.js' */
 import { sfx } from '../audio.js';
 import { drawArt } from '../art.js';
-import { rand, handTouching } from './kit.js';
+import { rand, handTouching, reachX } from './kit.js';
 
 // Tuning constants live at the top so a playtest can adjust them without reading the code.
 const SPAWN_EVERY = 0.9; // seconds between stars (shrinks with more kids and in harder rounds)
@@ -43,7 +43,7 @@ const template = {
     this.spawn -= dt;
     if (this.spawn <= 0) {
       this.spawn = SPAWN_EVERY / Math.sqrt(Math.max(1, players.length)) / g.diff;
-      this.stars.push({ x: rand(0.1, 0.9) * g.W, y: -60 * u, r: 55 * u, vy: FALL_SPEED * u * g.diff });
+      this.stars.push({ x: reachX(g, rand(0.1, 0.9)), y: -60 * u, r: 55 * u, vy: FALL_SPEED * u * g.diff });
     }
     for (const s of this.stars) {
       s.y += s.vy * dt;

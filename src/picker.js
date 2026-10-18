@@ -1,6 +1,6 @@
 // The level picker: a carousel of big picture cards, chosen with the body, no reading needed.
 //
-// The current game is a big card in the top centre, the previous and next ones smaller on either side. A kid
+// The current game is a big card at the top in the middle, the previous and next ones smaller on either side. A kid
 // waves a hand out to the side to scroll: a hand out to the right shows the next game, to the left the previous
 // one (the picture is mirrored, so a kid's right hand is on the right of the screen). Holding a hand out keeps
 // scrolling, slowly. To play the game in the middle, any playing kid puts both arms straight up and holds them
@@ -133,9 +133,11 @@ export class Carousel {
 // Where the cards are drawn: the one in the middle big, near ones smaller and to the sides. `pos` is the
 // carousel's (sliding) position. Returns, for each visible card, its index in the list, its rect and how far
 // it is from the middle (0 = the middle card).
-// The middle card's full size: half the screen height, narrower on a portrait screen.
+// The middle card's full size: about a third of the screen height (narrower on a portrait screen), and the
+// cards sit in the top band from CARDS_TOP down, so the kids can watch themselves under the picker.
+export const CARDS_TOP = 0.09;
 export function cardSize(W, H) {
-  const h = Math.min(H * 0.5, W * 0.34 * 1.1);
+  const h = Math.min(H * 0.36, W * 0.3);
   return { w: h / 1.1, h };
 }
 
@@ -143,7 +145,7 @@ export function cardSize(W, H) {
 export function carouselLayout(n, pos, W, H) {
   const { w, h } = cardSize(W, H);
   const cx = W / 2;
-  const cy = H * 0.12 + h / 2;
+  const cy = H * CARDS_TOP + h / 2;
   const spacing = Math.min(W * 0.33, w * 1.25);
   const out = [];
   const base = Math.round(pos);
@@ -270,21 +272,21 @@ export function drawPicker(ctx, g, choices, carousel, cards, lastStep) {
     ctx.restore();
   }
   // how to scroll: a waving hand and an arrow under each side card, a little wave animation
-  const y = g.H * 0.12 + full.h + 70 * u;
+  const y = g.H * CARDS_TOP + full.h + 48 * u;
   const wob = Math.sin(g.now * 6) * 0.25;
   for (const dir of [-1, 1]) {
     const x = g.W / 2 + dir * Math.min(g.W * 0.33, full.w * 1.25);
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(wob * dir);
-    ctx.font = `${70 * u}px ${EMOJI_FONT}`;
+    ctx.font = `${54 * u}px ${EMOJI_FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('👋', 0, 0);
     ctx.restore();
-    text(ctx, dir < 0 ? '◀' : '▶', x + dir * 75 * u, y, 60 * u, { color: '#ffe14d' });
+    text(ctx, dir < 0 ? '◀' : '▶', x + dir * 60 * u, y, 46 * u, { color: '#ffe14d' });
   }
   // how to play: both arms up, under the middle card
-  drawPoseIcon(ctx, 'armsUp', g.W / 2 - 150 * u, y + 45 * u, 110 * u, '#7dff6b');
-  text(ctx, 'PLAY!', g.W / 2 + 40 * u, y, 64 * u, { color: '#7dff6b' });
+  drawPoseIcon(ctx, 'armsUp', g.W / 2 - 110 * u, y + 34 * u, 84 * u, '#7dff6b');
+  text(ctx, 'PLAY!', g.W / 2 + 30 * u, y, 48 * u, { color: '#7dff6b' });
 }

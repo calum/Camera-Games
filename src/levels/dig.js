@@ -16,6 +16,7 @@ import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
 import { text } from '../draw.js';
 import { rand } from './kit.js';
+import { FULL_AREA } from '../calibrate.js';
 
 export const COLS = 5; // bricks across the screen: wide on purpose, kids drift while jumping
 const ROW_H = 150; // brick height in u
@@ -107,6 +108,24 @@ export function pickColumn(x, W, prev) {
   return x >= left && x < right ? prev : raw;
 }
 
+// Where the columns go: across the play space (calibrate.js), so a treasure chest is never over the sofa. A kid
+// at the edge of the space stands in the middle of the edge column. Never narrower than MIN_SPAN of the screen
+// (bricks stay big), and without a calibration the columns fill the screen as before. Fractions of the width.
+const MIN_SPAN = 0.6;
+/** @param {import('../calibrate.js').PlayArea} [a] */
+export function digSpan(a = FULL_AREA) {
+  const pad = (a.x1 - a.x0) / (COLS - 1) / 2;
+  let l = a.x0 - pad;
+  let r = a.x1 + pad;
+  if (r - l < MIN_SPAN) {
+    const m = (l + r) / 2;
+    l = m - MIN_SPAN / 2;
+    r = m + MIN_SPAN / 2;
+  }
+  const width = Math.min(1, r - l);
+  return { left: Math.min(1 - width, Math.max(0, l)), width };
+}
+
 /** @satisfies {Level} */
 const dig = {
   id: 'dig',
@@ -168,7 +187,8 @@ const dig = {
       let k = this.kids.get(p.id);
       // First sight: remember the jump clock without counting an old jump as a stomp.
       if (!k) this.kids.set(p.id, (k = { col: undefined, y: -1, prevJump: p.lastJump, fallT: 0 }));
-      k.col = pickColumn(p.cx, g.W, k.col);
+      const { left, colW } = this.cols(g);
+      k.col = pickColumn(p.cx - left, colW * COLS, k.col);
       // lastJump is refreshed every frame while a kid is in the air, so only a jump after being
       // on the ground for a moment counts as a new stomp. Holding a jump is one stomp.
       if (p.lastJump - k.prevJump > NEW_JUMP_GAP) this.stomps.push({ id: p.id, at: g.now + LAND_DELAY });
@@ -301,8 +321,15 @@ const dig = {
     this.messages.push({ text: str, color, t: 0 });
   },
 
+  // The columns on screen, in px: the left edge of the first one and their width.
+  cols(g) {
+    const s = digSpan(g.area ?? undefined);
+    return { left: s.left * g.W, colW: (s.width * g.W) / COLS };
+  },
+
   colX(g, c) {
-    return (c + 0.5) * (g.W / COLS);
+    const { left, colW } = this.cols(g);
+    return left + (c + 0.5) * colW;
   },
 
   // Screen y of the top of cell (c, r): the brick under a kid's feet (row view+1) sits on the floor line.
@@ -312,7 +339,7 @@ const dig = {
 
   draw(g, ctx) {
     const u = g.u;
-    const colW = g.W / COLS;
+    const { left, colW } = this.cols(g);
     const rowH = ROW_H * u;
     const players = g.activePlayers();
 
@@ -333,11 +360,11 @@ const dig = {
         const b = row.bricks[c];
         if (b.broken) {
           ctx.fillStyle = 'rgba(10,6,3,0.85)'; // the hole
-          ctx.fillRect(c * colW, y, colW, rowH);
+          ctx.fillRect(left + c * colW, y, colW, rowH);
           continue;
         }
         const shake = b.shake > 0 ? Math.sin(g.now * 60 + c) * 6 * u : 0;
-        const x = c * colW + shake;
+        const x = left + c * colW + shake;
         const metal = b.kind === 'metal';
         const tnt = b.kind === 'tnt';
         ctx.fillStyle = metal ? '#9aa3ad' : tnt ? '#d8362b' : row.layer.fill;
@@ -390,7 +417,7 @@ const dig = {
         const b = this.cell(k.col, k.y + 1);
         if (!b) continue;
         const y = this.cellY(g, k.col, k.y + 1);
-        ctx.strokeRect(k.col * colW + 8 * u, y + 8 * u, colW - 16 * u, rowH - 16 * u);
+        ctx.strokeRect(left + k.col * colW + 8 * u, y + 8 * u, colW - 16 * u, rowH - 16 * u);
         if (b.kind === 'metal') {
           const left = k.col > 0 && (k.col === COLS - 1 || this.cell(k.col - 1, k.y + 1)?.kind !== 'metal');
           text(ctx, left ? '⬅' : '➡', x, this.floorY - rowH * 0.5, 110 * u, { color: p.color });

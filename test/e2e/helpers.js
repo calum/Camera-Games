@@ -98,7 +98,13 @@ export function launch(executablePath, extraArgs = []) {
 // `init` (optional) is a function, or a list of functions, that run inside the page before any game code,
 // e.g. to spy on the camera. Each must be self-contained: only its own source is sent to the page.
 // setup: show the first-launch setup check (a fresh test browser would otherwise always see it first).
-export async function openGame(browser, url, { init, window = false, setup = false } = {}) {
+// calibrate: show the play-space check (otherwise ?nocal is added, so tests go straight from joining to the picker).
+export async function openGame(browser, url, { init, window = false, setup = false, calibrate = false } = {}) {
+  if (!calibrate) {
+    const u = new URL(url);
+    u.searchParams.set('nocal', '1');
+    url = u.href;
+  }
   // window: its own browser window, so it counts as visible while another page is open (tabs behind the front one stop drawing)
   const page = await browser.newPage(window ? { type: 'window' } : undefined);
   if (!setup) await page.evaluateOnNewDocument(skipSetupCheck);

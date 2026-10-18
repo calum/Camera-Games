@@ -17,6 +17,7 @@ import { SIGNAL_URL } from './online-config.js';
 import { DebugRecorder } from './debug-record.js';
 import { parseRecording, recordingStart } from './recording.js';
 import { ReplayTracker } from './replay.js';
+import { Calibration, shouldCalibrate } from './calibrate.js';
 import { SetupCheck, shouldRunSetup, saveSetupDone, frameBrightness, judgeCamera, judgeLight, judgeDistance, judgeSpeed, judgeGraphics, softwareRendering, accelerationHelp } from './setup-check.js';
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
@@ -93,7 +94,8 @@ const backdrops = new Backdrops();
 let cutoutReady = false;
 
 // ------------------------------------------------------------------ state machine
-// loading -> (setup, the first time) -> menu (arms out to join) -> pick (choose a level) -> intro -> play -> outro -> pick ...
+// loading -> (setup, the first time) -> menu (arms out to join) -> calibrate (show the play space) -> pick (choose a
+// level) -> intro -> play -> outro -> pick ...
 let state = 'loading';
 let stateT = 0;
 let levelIdx = 0;
@@ -111,6 +113,10 @@ const family = new Family({ canvas, search: location.search, origin: location.or
 let outroMsg = '';
 let status = 'Loading...';
 let setup = new SetupCheck();
+// The play space (calibrate.js): measured once per start, before the first picker, and again after a camera switch
+// (a new picture, a new space) or when a grown-up presses P in the picker. ?nocal and ?level= skip it.
+let calibration = new Calibration();
+let calibrated = !shouldCalibrate(params);
 
 function setState(s) {
   state = s;
@@ -132,9 +138,25 @@ function toMenu() {
 
 // The level picker: the kids who joined choose what to play, and come back here after every level.
 function toPick() {
+  if (!calibrated && tracker !== mouse) return toCalibrate(); // a mouse has no room to measure
   g.level = null;
   carousel.reset(lastPlayed >= 0 ? lastPlayed : 0); // the game just played is in the middle: "again!" is arms up
   setState('pick');
+}
+
+function toCalibrate() {
+  g.level = null;
+  calibration = new Calibration();
+  setState('calibrate');
+}
+
+// The play space is known (or a grown-up skipped the rest): the levels keep to it, and on to the picker.
+function calibrationDone() {
+  if (calibration.sides.left || calibration.sides.right) g.area = calibration.area;
+  calibrated = true;
+  note('area', { ...g.area });
+  if (calibration.sides.left || calibration.sides.right) sfx.fanfare();
+  toPick();
 }
 
 /** @param {number} i  a card in `choices` */
@@ -269,6 +291,11 @@ async function switchCamera() {
   switchingCamera = true;
   try {
     const cam = await pose.nextCamera();
+    if (cam) {
+      // a different picture: the play space is measured again before the next pick
+      g.area = null;
+      calibrated = !shouldCalibrate(params);
+    }
     toast(cam ? `Camera ${cam.index} of ${cam.count}: ${cam.label}` : 'Only one camera found (a phone webcam app has to be running first)', 4);
   } catch (e) {
     console.error(e);
@@ -284,6 +311,7 @@ window.addEventListener('resize', resize);
 const actions = {
   start() {
     if (state === 'setup') toMenu(); // skip the setup check
+    else if (state === 'calibrate') skipCalibration();
     else if (state === 'menu') startGame();
     else if (state === 'pick') choose(carousel.index); // the game in the middle
   },
@@ -293,6 +321,7 @@ const actions = {
   // Back one step: from a level to the picker, from the picker to the join screen.
   menu() {
     if (state === 'setup') toMenu();
+    else if (state === 'calibrate') skipCalibration();
     else if (inLevel()) toPick();
     else if (state === 'pick') toMenu();
   },
@@ -323,6 +352,7 @@ window.addEventListener('keydown', (e) => {
     e.preventDefault();
   } else if (k === 'n') actions.next();
   else if ((k === 'arrowleft' || k === 'arrowright') && state === 'pick') scroll(k === 'arrowleft' ? -1 : 1);
+  else if (k === 'p' && state === 'pick' && tracker !== mouse) toCalibrate(); // measure the play space again
   else if (k >= '1' && k <= '9' && Number(k) <= LEVELS.length && state !== 'loading') {
     if (state === 'menu') g.team.score = 0;
     startLevel(Number(k) - 1);
@@ -355,6 +385,7 @@ window.addEventListener('pointerdown', unlock);
 // A grown-up can tap (or click) the picker: a side card scrolls to it, the middle card plays.
 canvas.addEventListener('pointerdown', (e) => {
   if (state === 'setup') return toMenu(); // a tap skips the setup check
+  if (state === 'calibrate') return skipCalibration();
   if (state !== 'pick') return;
   const r = canvas.getBoundingClientRect();
   const card = carouselCardAt(pickCards(), { x: ((e.clientX - r.left) * canvas.width) / r.width, y: ((e.clientY - r.top) * canvas.height) / r.height });
@@ -426,6 +457,11 @@ function update(dt) {
 
   if (state === 'setup') {
     updateSetup(dt);
+  } else if (state === 'calibrate') {
+    const phase = calibration.phase;
+    calibration.update(localPeople().filter((p) => p.present && !p.excluded), g.W, dt);
+    if (calibration.phase !== phase) sfx.star(); // one side done
+    if (calibration.finished) calibrationDone();
   } else if (state === 'menu') {
     // Arms out for 3s starts the game with exactly the kids who have their arms out.
     const joinedIds = lobby.update(g.activePlayers(), g.now, dt);
@@ -521,7 +557,7 @@ function watchFrameRate(dt) {
 // ------------------------------------------------------------------ render
 // Which cartoon world to show: one per level, a meadow in the menu and the picker.
 function backdropId() {
-  if (state === 'menu' || state === 'pick' || state === 'loading' || state === 'setup' || !g.level) return 'menu';
+  if (state === 'menu' || state === 'pick' || state === 'loading' || state === 'setup' || state === 'calibrate' || !g.level) return 'menu';
   return typeof g.level.backdrop === 'string' ? g.level.backdrop : g.level.id;
 }
 
@@ -619,6 +655,54 @@ function drawSetup() {
   text(ctx, foot, g.W / 2, g.H - 50 * u, 32 * u, { color: setup.overdue ? '#ffe14d' : '#cfd6e6' });
 }
 
+function skipCalibration() {
+  calibration.skip();
+  calibrationDone();
+}
+
+// The play-space check: a big arrow says which way to walk, and a green floor grows under the kids as they explore.
+// The words stay in the top band, like every screen, so the kids can watch themselves.
+function drawCalibration() {
+  const u = g.u;
+  const c = calibration;
+  ctx.fillStyle = 'rgba(8,12,30,0.25)';
+  ctx.fillRect(0, 0, g.W, g.H);
+  // the ground found so far: a green strip along the bottom, from the furthest left to the furthest right
+  if (c.lo <= c.hi) {
+    const a = c.phase === 'done' ? c.area : null;
+    const x0 = (a ? a.x0 : c.lo) * g.W;
+    const x1 = (a ? a.x1 : c.hi) * g.W;
+    const y = g.H - 90 * u;
+    ctx.fillStyle = 'rgba(77,255,136,0.35)';
+    ctx.fillRect(x0 - 40 * u, y, x1 - x0 + 80 * u, 70 * u);
+    ctx.fillStyle = '#4dff88';
+    ctx.fillRect(x0 - 40 * u, y, x1 - x0 + 80 * u, 8 * u);
+    for (const x of [x0 - 40 * u, x1 + 40 * u]) text(ctx, '⭐', x, y + 30 * u, 60 * u);
+  }
+  if (c.phase === 'done') {
+    text(ctx, 'This is your play space!', g.W / 2, g.H * 0.08, 84 * u, { color: '#7dff6b' });
+    text(ctx, 'The games will stay inside it.', g.W / 2, g.H * 0.16, 44 * u);
+    return;
+  }
+  const left = c.phase === 'left';
+  text(ctx, 'Show me your play space!', g.W / 2, g.H * 0.07, 72 * u, { color: '#ffe14d' });
+  text(ctx, left ? 'Walk this way as far as you can go!' : 'Now walk the other way, as far as you can!', g.W / 2, g.H * 0.15, 48 * u);
+  // a big bouncing arrow on that side, and a ring that fills once they have stopped at the furthest spot
+  const dir = left ? -1 : 1;
+  const x = g.W / 2 + dir * (g.W * 0.36 + Math.sin(g.now * 6) * 25 * u);
+  const y = g.H * 0.3;
+  text(ctx, left ? '⬅' : '➡', x, y, 150 * u, { color: '#ffe14d' });
+  if (c.progress > 0) {
+    ctx.lineWidth = 14 * u;
+    ctx.strokeStyle = '#7dff6b';
+    ctx.beginPath();
+    ctx.arc(x, y, 100 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * c.progress);
+    ctx.stroke();
+  }
+  const how = settings.mobile ? 'tap the screen' : 'press SPACE or tap';
+  text(ctx, `Stop where a wall or the sofa is in the way.   Grown-ups: ${how} to skip`, g.W / 2, g.H * 0.21, 28 * u, { color: '#cfd6e6' });
+}
+
 // The friendly screen while the camera or the tracking is put right (see PoseTracker._heal). After a few seconds
 // it suggests what a grown-up can check, in case it can't fix itself.
 function drawReconnecting() {
@@ -657,6 +741,7 @@ function render() {
   drawParticles();
 
   if (state === 'setup') drawSetup();
+  else if (state === 'calibrate') drawCalibration();
   else if (state === 'menu') {
     ctx.fillStyle = 'rgba(8,12,30,0.3)';
     ctx.fillRect(0, 0, g.W, g.H);
@@ -700,7 +785,7 @@ function render() {
   } else if (state === 'pick') {
     ctx.fillStyle = 'rgba(8,12,30,0.3)';
     ctx.fillRect(0, 0, g.W, g.H);
-    text(ctx, 'Pick a game!', g.W / 2, g.H * 0.07, 84 * u, { color: '#ffe14d' });
+    text(ctx, 'Pick a game!', g.W / 2, g.H * 0.045, 60 * u, { color: '#ffe14d' });
     drawPicker(ctx, g, choices, carousel, pickCards(), lastStep);
   } else if (state === 'intro') {
     ctx.fillStyle = 'rgba(8,12,30,0.4)';
@@ -737,7 +822,7 @@ function render() {
 
   if (g.debug) {
     // top left, on a solid panel and drawn last, so the game's own text and the buttons can't cover it
-    const lines = [...debugLines(), recordingLine(), `keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  1-${LEVELS.length} level  Esc menu`];
+    const lines = [...debugLines(), recordingLine(), `keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  P play space  1-${LEVELS.length} level  Esc menu`];
     const size = 24 * u;
     ctx.font = `600 ${size}px "Trebuchet MS", system-ui, sans-serif`;
     const w = Math.max(...lines.map((s) => ctx.measureText(s).width)) + 30 * u;
@@ -777,7 +862,7 @@ function debugLines() {
     `tracking ${tracker?.delegate}${cam ? `, ${pose.useWorker ? 'worker' : 'main thread'}, ${pose.quality.name} (${pose.modelName})` : ''}   players ${g.activePlayers().length}   state ${state}   diff ${g.diff.toFixed(2)}`,
     cam ? `camera ${pose.cameraLabel} ${pose.video.videoWidth}x${pose.video.videoHeight} (${pose.mode}, ${pose.cameraFps ? pose.cameraFps.toFixed(0) + ' fps' : 'measuring'})` : 'camera: none',
     `cut-out ${g.view === 'cutout' && cutoutReady ? `${(s.coverage * 100).toFixed(0)}% of screen, pose mask ${s.poseActive ? 'ON' : 'LOST'}` : 'off'}   screen ${g.W}x${g.H}   fx ${g.fx ? 'on' : 'off'}`,
-    `${browser}   gpu ${gpuName()}`,
+    `${browser}   gpu ${gpuName()}   play space ${g.area ? `${Math.round(g.area.x0 * 100)}-${Math.round(g.area.x1 * 100)}% (hands ${Math.round(g.area.reach0 * 100)}-${Math.round(g.area.reach1 * 100)}%)` : 'whole screen'}`,
   ];
 }
 function watchDebug(now) {
@@ -965,4 +1050,4 @@ requestAnimationFrame(frame);
 boot();
 
 // handy for debugging / automated tests
-/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get carousel() { return carousel; }, get setup() { return setup; }, pickCards, family, get recorder() { return rec; }, get replay() { return replay; }, loadRecording };
+/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get carousel() { return carousel; }, get setup() { return setup; }, get calibration() { return calibration; }, pickCards, family, get recorder() { return rec; }, get replay() { return replay; }, loadRecording };
