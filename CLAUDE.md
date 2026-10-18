@@ -39,6 +39,8 @@ src/lobby.js       join-by-arms-out: arms out for 3 s starts the game with exact
 src/controls.js    on-screen buttons (touch), full-screen note, screen wake lock
 src/device.js      pure: phone/tablet detection and starting settings
 src/levels/        one file per level, index.js = the list (play order), kit.js = helpers + checkLevel, _template.js
+src/online.js      pure maths for family play: room codes, guest skeletons -> remote players, cut-out video frame
+src/family.js      family play glue: WebRTC pairing, sending/receiving cut-out video (see docs/ONLINE.md)
 src/person-mask.js pure maths: pose silhouette + motion + fading -> per-pixel "is a person" (no DOM)
 src/cutout.js      browser glue that cuts the kids out of the camera frame
 src/backdrops.js   animated cartoon scene per level (static layer cached, dynamic layer per frame)

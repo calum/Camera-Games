@@ -23,6 +23,7 @@
  * @property {number} slot        colour slot
  * @property {string} color       this player's colour, e.g. '#ff4d6d'
  * @property {boolean} present    false during a short tracking dropout (the record is kept for a moment)
+ * @property {boolean} [remote]   a family guest in another home (family.js): placed by the host from the guest's skeleton
  * @property {boolean} [excluded] watching, not playing: did not join, or walked in mid-game. No score, no hits.
  * @property {Point[]} px         the 33 MediaPipe pose landmarks in screen space (0 nose, 11/12 shoulders,
  *                                15/16 wrists, 19/20 index fingers, 23/24 hips, 25/26 knees, 27/28 ankles)
