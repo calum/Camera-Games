@@ -27,6 +27,7 @@ export function dodged(kind, p, cross) {
 const duckjump = {
   id: 'duckjump',
   title: 'Duck and jump!',
+  icon: '🦆',
   hint: 'Jump over the logs. Duck under the birds!',
   color: '#8bd450',
   duration: 40,

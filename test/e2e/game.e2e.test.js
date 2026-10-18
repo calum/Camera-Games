@@ -90,9 +90,11 @@ test('REAL CAMERA PLAY-THROUGH: start with the keyboard, hold the airplane pose 
     await waitForState(page, 'menu', 60000);
     await waitForPerson(page);
 
-    await page.keyboard.press('Space'); // grown-up starts the game
+    await page.keyboard.press('Space'); // grown-up starts the game: the level picker
+    await waitForState(page, 'pick', 5000);
+    await page.keyboard.press('1'); // ...and picks level 1
     await waitForState(page, 'intro', 5000);
-    assert.equal(await page.evaluate(() => window.__game.g.level.id), 'bubbles', 'game starts with level 1');
+    assert.equal(await page.evaluate(() => window.__game.g.level.id), 'bubbles', 'key 1 plays level 1');
     await waitForState(page, 'play', 8000); // 3-second intro
 
     // jump straight to the dance level and make this round the "airplane" one (the photo's pose), for as long
@@ -544,7 +546,7 @@ test('CAMERA: ?cam=wide pins the picture size: a slow camera is NOT switched', {
   }
 });
 
-test('ON-SCREEN TEXT: every string the game paints is intact, in the menu, every level and the finale', { skip }, async () => {
+test('ON-SCREEN TEXT: every string the game paints is intact, in the menu, the picker, every level and the end of a level', { skip }, async () => {
   const browser = await launch(exe);
   try {
     const { page, problems } = await openGame(browser, url + '?mouse');
@@ -576,7 +578,9 @@ test('ON-SCREEN TEXT: every string the game paints is intact, in the menu, every
       }
       for (const k of ['q', 'w', 'e']) await page.keyboard.up(k);
     }
-    await page.keyboard.press('n'); // finale
+    await page.evaluate(() => window.__game.g.endLevel('Level complete!')); // the end-of-level screen
+    await waitForState(page, 'outro', 5000);
+    await waitForState(page, 'pick', 8000); // then the picker
     await wait(600);
 
     const texts = await page.evaluate(() => [...window.__texts]);
@@ -689,25 +693,50 @@ test('MOUSE MODE: a well-timed jump scores in the jump level, standing still doe
   }
 });
 
-test('MOUSE MODE: the full game loop runs from menu to finale and into a harder round', { skip }, async () => {
+test('PICKER (mouse mode): hold the hand over a card to play that level, then come back to the picker, not the next level', { skip }, async () => {
   const browser = await launch(exe);
   try {
     const { page, problems } = await openGame(browser, url + '?mouse');
     await waitForState(page, 'menu', 20000);
+    await page.mouse.move(640, 650);
     await page.keyboard.press('Space');
+    await waitForState(page, 'pick', 3000);
+    // the mouse is the kid's hand: rest it on the 4th card until the ring fills
     const ids = await page.evaluate(() => window.__game.levels.map((l) => l.id));
-    assert.ok(ids.length >= 4, `levels: ${ids.join(', ')}`);
-    for (const id of ids) {
-      await waitForState(page, 'intro', 8000);
-      assert.equal(await page.evaluate(() => window.__game.g.level.id), id);
-      await waitForState(page, 'play', 8000);
-      await page.keyboard.press('n'); // skip to the next level instead of waiting 30s
-    }
-    await waitForState(page, 'finale', 8000);
-    await page.keyboard.press('Space'); // next round
-    await waitForState(page, 'intro', 5000);
-    const diff = await page.evaluate(() => window.__game.g.diff);
-    assert.ok(diff > 1, `second round is harder (diff=${diff})`);
+    const card = await page.evaluate(() => {
+      const c = document.getElementById('c');
+      const r = window.__game.pickRects[3];
+      const k = c.getBoundingClientRect().width / c.width;
+      return { x: (r.x + r.w / 2) * k, y: (r.y + r.h / 2) * k };
+    });
+    await page.mouse.move(card.x, card.y);
+    const t0 = Date.now();
+    await waitForState(page, 'intro', 8000);
+    assert.ok(Date.now() - t0 > 1000, 'it takes a deliberate hold, not a fly-past');
+    assert.equal(await page.evaluate(() => window.__game.g.level.id), ids[3]);
+    await page.mouse.move(640, 650); // hand away from the cards
+    // finish the level: back to the picker, with no level running
+    await waitForState(page, 'play', 8000);
+    await page.evaluate(() => window.__game.g.endLevel('Level complete!'));
+    await waitForState(page, 'pick', 10000);
+    assert.equal(await page.evaluate(() => window.__game.g.level), null, 'no level runs on by itself');
+    await wait(3000);
+    assert.equal(await page.evaluate(() => window.__game.state), 'pick', 'still waiting for a choice');
+    // the grown-up can tap a card instead
+    const tap = await page.evaluate(() => {
+      const c = document.getElementById('c');
+      const r = window.__game.pickRects[1];
+      const k = c.getBoundingClientRect().width / c.width;
+      return { x: (r.x + r.w / 2) * k, y: (r.y + r.h / 2) * k };
+    });
+    await page.mouse.click(tap.x, tap.y);
+    await waitForState(page, 'intro', 2000);
+    assert.equal(await page.evaluate(() => window.__game.g.level.id), ids[1]);
+    // Esc: from a level back to the picker, then to the join screen
+    await page.keyboard.press('Escape');
+    await waitForState(page, 'pick', 2000);
+    await page.keyboard.press('Escape');
+    await waitForState(page, 'menu', 2000);
     assert.deepEqual(problems, []);
   } finally {
     await browser.close();
@@ -734,7 +763,7 @@ test('AUTO-START (real camera): a kid holding their arms out starts the game by 
       requestAnimationFrame(tick);
     });
     assert.equal(await page.evaluate(() => window.__game.state), 'menu', 'does not start instantly');
-    await waitForState(page, 'intro', 60000); // nobody touched the keyboard
+    await waitForState(page, 'pick', 60000); // nobody touched the keyboard: on to the level picker
     const secs = (Date.now() - t0) / 1000;
     const gameSecs = await page.evaluate(() => window.__gameSecs);
     assert.ok(secs >= 2.5, `not before ~3 s of arms-out (${secs.toFixed(1)} s)`);
@@ -763,7 +792,7 @@ test('AUTO-START (mouse mode): holding the airplane pose (W) for 3s starts the g
 
     const t0 = Date.now();
     await page.keyboard.down('w');
-    await waitForState(page, 'intro', 10000);
+    await waitForState(page, 'pick', 10000);
     await page.keyboard.up('w');
     const secs = (Date.now() - t0) / 1000;
     assert.ok(secs >= 2.8 && secs < 5, `took ${secs.toFixed(1)}s`);
@@ -809,8 +838,9 @@ test('JOINING: a kid who does not put their arms out is left out of the game (no
     assert.equal(await page.evaluate(() => window.__game.g.activePlayers().length), 2, 'both kids visible in the lobby');
 
     await page.keyboard.down('w');
-    await waitForState(page, 'intro', 10000);
+    await waitForState(page, 'pick', 10000);
     await page.keyboard.up('w');
+    await page.keyboard.press('1'); // bubbles
 
     const after = await page.evaluate(() => ({
       playing: window.__game.g.activePlayers().map((p) => p.id),
@@ -830,7 +860,9 @@ test('JOINING: a kid who does not put their arms out is left out of the game (no
     assert.equal(await page.evaluate(() => window.__bystander().score), 0, 'bystander cannot score');
     assert.equal(await page.evaluate(() => window.__game.g.level.items.length), 1, 'their hands do not pop bubbles');
 
-    // Going back to the menu gives everybody a fresh chance to join.
+    // Going back to the menu (Esc twice: level -> picker -> menu) gives everybody a fresh chance to join.
+    await page.keyboard.press('Escape');
+    await waitForState(page, 'pick', 3000);
     await page.keyboard.press('Escape');
     await waitForState(page, 'menu', 3000);
     assert.equal(await page.evaluate(() => window.__bystander().excluded), false);
@@ -932,6 +964,17 @@ test('TOUCH: tapping the screen shows the grown-up buttons; Start starts the gam
     const visible = await page.evaluate(() => [...document.querySelectorAll('#controls button')].filter((b) => !b.hidden).map((b) => b.dataset.action));
     assert.ok(visible.includes('start') && visible.includes('fullscreen'), `menu buttons: ${visible}`);
     await page.tap('#controls button[data-action="start"]');
+    await waitForState(page, 'pick', 3000);
+    const picking = await page.evaluate(() => [...document.querySelectorAll('#controls button')].filter((b) => !b.hidden).map((b) => b.dataset.action));
+    assert.ok(picking.includes('menu') && !picking.includes('next'), `picker buttons: ${picking}`);
+    // tap the first card (bubbles)
+    const card = await page.evaluate(() => {
+      const c = document.getElementById('c');
+      const r = window.__game.pickRects[0];
+      const k = c.getBoundingClientRect().width / c.width;
+      return { x: (r.x + r.w / 2) * k, y: (r.y + r.h / 2) * k };
+    });
+    await page.touchscreen.tap(card.x, card.y);
     await waitForState(page, 'intro', 3000);
     const during = await page.evaluate(() => [...document.querySelectorAll('#controls button')].filter((b) => !b.hidden).map((b) => b.dataset.action));
     assert.ok(during.includes('next') && during.includes('menu') && !during.includes('start'), `in-game buttons: ${during}`);
@@ -951,6 +994,8 @@ test('WALKING PAST: someone who appears mid-game only watches, until they hold t
     await waitForState(page, 'menu', 20000);
     await page.mouse.move(300, 300);
     await page.keyboard.press('Space');
+    await waitForState(page, 'pick', 3000);
+    await page.keyboard.press('1');
     await waitForState(page, 'intro', 3000);
 
     // a grown-up walks into view: the tracker reports a brand-new person (isNew, as people.js does)
@@ -1007,7 +1052,9 @@ test('FULL SCREEN NOTE: when the game is not full screen the menu suggests it, w
 
     await page.evaluate(() => document.exitFullscreen());
     await page.waitForFunction(() => !document.getElementById('fullscreen-nudge').hidden, { timeout: 3000 });
-    await page.keyboard.press('Space'); // not shown during play: it would only distract
+    await page.keyboard.press('Space');
+    await waitForState(page, 'pick', 3000);
+    await page.keyboard.press('1'); // not shown during play: it would only distract
     await waitForState(page, 'intro', 3000);
     await page.waitForFunction(() => document.getElementById('fullscreen-nudge').hidden, { timeout: 3000 });
     assert.deepEqual(problems, []);

@@ -49,6 +49,7 @@ const wall = {
   id: 'wall',
   backdrop: EXTRA_SCENES.wall,
   title: 'Hole in the wall!',
+  icon: '🧱',
   hint: 'Copy the pose in the hole before the wall hits you!',
   color: '#ff9ad5',
   duration: 40,

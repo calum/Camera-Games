@@ -16,7 +16,9 @@ Built for a family living room: one laptop, one cheap webcam, two or three kids 
 | **Jump the waves** (beach) | Count down 3-2-1 and jump as the wave rolls past. A green glow and "NICE JUMP!" for a good one, a red "SPLASH!" if you miss. |
 | **Dance party** (disco) | Copy the stick-figure pose on screen (arms up, airplane, hands on head) and hold it. |
 
-After the fourth level there is a winners screen and the next round starts a little harder.
+After joining, the kids choose what to play on the **level picker**: a big picture card per level (plus a
+**Surprise!** card). A kid holds a hand up over a card until the ring around it fills. After each level the
+picker comes back, so they choose again (the same level is one card away).
 
 ## Quick start
 
@@ -66,11 +68,11 @@ are wearing, and carries on with their own colour and score.
 
 | Key | Does |
 |---|---|
-| Space / Enter | Start the game with everyone (and skip the winners screen) |
+| Space / Enter | Start with everyone (on to the level picker); in the picker, play a surprise level |
 | F | Fullscreen |
-| 1 - 9 | Jump to a level |
+| 1 - 9 | Play that level (by its place in the list) |
 | N | Next level |
-| Esc | Back to the menu (everyone can join again) |
+| Esc | Back one step: from a level to the picker, from the picker to the menu (everyone can join again) |
 | C | Switch to the next camera (a phone webcam app shows up as an extra camera); the choice is remembered |
 | B | Show just the kids in a cartoon world (default), or the whole camera picture |
 | K | Skeleton overlay: thin line (default), bold, or off |
@@ -78,7 +80,7 @@ are wearing, and carries on with their own colour and score.
 | M | Switch between camera and mouse mode |
 
 **On a tablet or phone** (or any time), tap the screen: buttons for **▶ Start**, **⏭ Next level**,
-**⏏ Menu**, **📷 Camera** and **⛶ Full screen** appear for a few seconds. When the game isn't full screen, the
+**⏏ Menu**, **📷 Camera** and **⛶ Full screen** appear for a few seconds. In the level picker a grown-up can also tap a card. When the game isn't full screen, the
 menu shows a small "Full screen works best" note with a button (on iPhone it suggests Add to Home Screen,
 since web pages can't go full screen there). The screen is kept awake while the game is open.
 

@@ -112,6 +112,7 @@ const dig = {
   id: 'dig',
   backdrop: EXTRA_SCENES.dig,
   title: 'Dig down!',
+  icon: '⛏️',
   hint: 'Jump to stomp the bricks. Metal won\'t break, so go round. TNT goes BANG!',
   color: '#c98a4b',
   duration: 60,

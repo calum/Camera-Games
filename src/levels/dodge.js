@@ -9,6 +9,7 @@ import { rand, pick, bodyHit } from './kit.js';
 const dodge = {
   id: 'dodge',
   title: 'Dodge the rocks!',
+  icon: '🪨',
   hint: 'Watch for the ! then move out of the way. You share 5 hearts!',
   color: '#ff7a3d',
   duration: 30,

@@ -11,6 +11,7 @@ const FEEDBACK_TIME = 1.7; // seconds a jump result stays on screen
 const jump = {
   id: 'jump',
   title: 'Jump the waves!',
+  icon: '🌊',
   hint: 'When the wave reaches you, JUMP!',
   color: '#2bd1a0',
   duration: 32,

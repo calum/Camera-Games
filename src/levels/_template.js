@@ -24,6 +24,7 @@ const FALL_SPEED = 260; // u per second
 const template = {
   id: 'stars', // unique, lowercase; also picks the backdrop (see `backdrop`) and assets/bg_<id>.png
   title: 'Catch the stars!',
+  icon: '⭐', // the big picture on this level's card in the level picker
   hint: 'Touch the falling stars with your hands!',
   color: '#ffd24d',
   duration: 30, // seconds

@@ -17,6 +17,7 @@ const holdTime = (g) => HOLD * (g.ease ?? 1);
 const dance = {
   id: 'dance',
   title: 'Dance party!',
+  icon: '🕺',
   hint: 'Copy the pose on the screen and hold it!',
   color: '#c77dff',
   duration: ROUND * 5,
