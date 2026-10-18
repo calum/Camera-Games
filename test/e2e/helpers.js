@@ -128,3 +128,26 @@ export async function openWithCameras(exe, url, { count = 3, init, tries = 8 } =
   }
   throw new Error(`the test browser never listed ${count} fake cameras`);
 }
+
+// Waits until the tracker has found a person (with `airplane`, in the arms-out pose). Tracking speed varies a lot:
+// a software renderer on a busy machine can take seconds per frame, so this counts tracked frames, not seconds.
+// It fails once `frames` frames have been tracked without finding them (or after 5 minutes, as a backstop).
+export async function waitForPerson(page, { airplane = false, frames = 20 } = {}) {
+  await page.waitForFunction(
+    (airplane, frames) => {
+      const t = window.__game.tracker;
+      return t.players.some((p) => p.present && (!airplane || p.pose.airplane)) || t.frameSeq >= frames;
+    },
+    { timeout: 300000, polling: 100 },
+    airplane,
+    frames,
+  );
+  const found = await page.evaluate(
+    (airplane) => window.__game.tracker.players.some((p) => p.present && (!airplane || p.pose.airplane)),
+    airplane,
+  );
+  if (!found) {
+    const ms = await page.evaluate(() => window.__game.tracker.detectMs);
+    throw new Error(`no person${airplane ? ' in the airplane pose' : ''} found in ${frames} tracked frames (${ms.toFixed(0)} ms each)`);
+  }
+}

@@ -17,6 +17,7 @@ node server.mjs          # serve the game at http://localhost:8137 (PORT env var
 npm run typecheck        # JSDoc types checked by tsc (no build, nothing emitted), a few seconds
 npm test                 # unit tests (node:test), ~2 s
 npm run test:e2e         # browser tests with real Edge/Chrome + the real pose model, ~10 min
+npm run test:perf        # just the performance test (every level must stay smooth on a no-GPU laptop), ~2 min
 npm run test:all         # all three; run this before saying something works
 ```
 

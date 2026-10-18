@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { findBrowser, startServer, makeFakeWebcamFile, launch, openGame, openWithCameras, waitForState, wait } from './helpers.js';
+import { findBrowser, startServer, makeFakeWebcamFile, launch, openGame, openWithCameras, waitForState, waitForPerson, wait } from './helpers.js';
 import { createGameServer } from '../../server.mjs';
 
 // Start a level by id (keys 1-9 only reach the first nine levels in src/levels/index.js).
@@ -41,7 +41,7 @@ test('REAL CAMERA PIPELINE: model loads, camera starts, a person is found and th
     const result = await page.evaluate(() => window.__game.g.notice);
     assert.equal(result, '', 'no "no camera" fallback notice, so the real camera path was used');
 
-    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 20000 });
+    await waitForPerson(page);
     const info = await page.evaluate(() => {
       const t = window.__game.tracker;
       const p = t.players[0];
@@ -88,22 +88,28 @@ test('REAL CAMERA PLAY-THROUGH: start with the keyboard, hold the airplane pose 
   try {
     const { page, problems } = await openGame(browser, url);
     await waitForState(page, 'menu', 60000);
-    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 20000 });
+    await waitForPerson(page);
 
     await page.keyboard.press('Space'); // grown-up starts the game
     await waitForState(page, 'intro', 5000);
     assert.equal(await page.evaluate(() => window.__game.g.level.id), 'bubbles', 'game starts with level 1');
     await waitForState(page, 'play', 8000); // 3-second intro
 
-    // jump straight to the dance level, wait until the "airplane" round shows up and gets scored
+    // jump straight to the dance level and make this round the "airplane" one (the photo's pose), for as long
+    // as the test needs. Rounds are random: waiting for an airplane round to come up by chance failed ~1 run in 20.
     await playLevel(page, 'dance');
     await waitForState(page, 'play', 8000);
+    await page.evaluate(() => {
+      const level = window.__game.g.level;
+      level.cur = { key: 'airplane', name: 'Be an airplane!' };
+      level.roundT = -1000;
+    });
     await page.waitForFunction(
       () => {
         const g = window.__game.g;
         return g.team.score >= 3 && g.players[0].score >= 3;
       },
-      { timeout: 30000 }, // rounds are random; an airplane round comes up within a few rounds
+      { timeout: 20000 }, // the pose has to be held for 0.8 s of tracking, which can be ~1 frame a second here
     );
     assert.deepEqual(problems, []);
   } finally {
@@ -116,7 +122,7 @@ test('FULL COLOUR (camera view): kids see the camera picture at full brightness,
   try {
     const { page, problems } = await openGame(browser, url + '?view=camera');
     await waitForState(page, 'menu', 60000);
-    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 20000 });
+    await waitForPerson(page);
     await page.keyboard.press('Space');
     await playLevel(page, 'dance'); // dance level: nothing drawn over the left side of the screen
     await waitForState(page, 'play', 10000);
@@ -225,7 +231,7 @@ test('CUT-OUT: only the kid is shown (cut out of the camera picture) in front of
     // ?model=full pins the model so it can't be swapped mid-test on a slow machine
     const { page, problems } = await openGame(browser, url + '?model=full');
     await waitForState(page, 'menu', 60000);
-    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 20000 });
+    await waitForPerson(page);
     await page.keyboard.press('Space');
     await playLevel(page, 'dance'); // dance level = dark purple disco
     await waitForState(page, 'play', 10000);
@@ -713,7 +719,7 @@ test('AUTO-START (real camera): a kid holding their arms out starts the game by 
   try {
     const { page, problems } = await openGame(browser, url);
     await waitForState(page, 'menu', 60000);
-    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 20000 });
+    await waitForPerson(page);
     const t0 = Date.now();
     assert.equal(await page.evaluate(() => window.__game.state), 'menu', 'does not start instantly');
     await waitForState(page, 'intro', 15000); // nobody touched the keyboard
@@ -840,7 +846,7 @@ test('SMOOTH DRAWING: the pose model runs in a worker, so the game keeps drawing
   try {
     const { page, problems } = await openGame(browser, url + '?model=full');
     await waitForState(page, 'menu', 60000);
-    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 30000 });
+    await waitForPerson(page);
     const info = await page.evaluate(async () => {
       const t = window.__game.tracker;
       // count drawn frames and tracked frames over 3 s
@@ -868,7 +874,7 @@ test('MAIN-THREAD FALLBACK: with ?worker=off the pose model runs on the main thr
   try {
     const { page, problems } = await openGame(browser, url + '?worker=off&model=full');
     await waitForState(page, 'menu', 60000);
-    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present && p.pose.airplane), { timeout: 30000 });
+    await waitForPerson(page, { airplane: true });
     assert.equal(await page.evaluate(() => window.__game.tracker.useWorker), false);
     assert.deepEqual(problems, []);
   } finally {
@@ -889,7 +895,7 @@ test('GITHUB PAGES: the game works from a sub-folder (every file is asked for re
       if (u.protocol.startsWith('http') && !u.pathname.startsWith('/kids-camera-games/')) outside.push(u.pathname);
     });
     await waitForState(page, 'menu', 60000);
-    await page.waitForFunction(() => window.__game.tracker.players.some((p) => p.present), { timeout: 30000 });
+    await waitForPerson(page);
     assert.equal(await page.evaluate(() => window.__game.g.notice), '', 'the camera path was used, not the mouse fallback');
     assert.deepEqual(outside, [], 'nothing was requested from outside the game folder');
     assert.deepEqual(problems, []);
