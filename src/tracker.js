@@ -380,7 +380,7 @@ export class PoseTracker {
   setView(W, H) {
     this.W = W;
     this.H = H;
-    this.people.setView(W);
+    this.people.setView(W, H);
   }
 
   // Where the (mirrored, cover-fitted) camera image sits on the canvas.

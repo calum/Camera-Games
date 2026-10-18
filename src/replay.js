@@ -37,7 +37,7 @@ export class ReplayTracker {
   setView(W, H) {
     this.W = W;
     this.H = H;
-    this.people.setView(W);
+    this.people.setView(W, H);
   }
 
   videoRect() {
@@ -76,7 +76,7 @@ export class ReplayTracker {
  * Play a whole recording without a screen and say what the game would have seen every `step` seconds.
  * @param {Recording} rec
  * @param {{ W?: number, H?: number, step?: number, tail?: number }} [opts]  tail: keep going this long after the last frame
- * @returns {{ t: number, players: { id: number, x: number, pose: string[] }[] }[]}
+ * @returns {{ t: number, players: { id: number, x: number, y: number, sw: number, pose: string[] }[] }[]}  y, sw: shoulder height and width
  */
 export function playRecording(rec, { W = 1920, H = 1080, step = 1 / 60, tail = 1 } = {}) {
   const r = new ReplayTracker(rec);
@@ -87,7 +87,7 @@ export function playRecording(rec, { W = 1920, H = 1080, step = 1 / 60, tail = 1
   const end = rec.frames.at(-1).t - t0 + tail;
   for (let t = 0; t <= end + 1e-9; t += step) {
     const players = r.update(t0 + t);
-    out.push({ t, players: players.map((p) => ({ id: p.id, x: p.cx, pose: Object.keys(p.pose ?? {}).filter((k) => p.pose[k]) })) });
+    out.push({ t, players: players.map((p) => ({ id: p.id, x: p.cx, y: p.sh.y, sw: p.shoulderW, pose: Object.keys(p.pose ?? {}).filter((k) => p.pose[k]) })) });
   }
   return out;
 }

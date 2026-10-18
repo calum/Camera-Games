@@ -108,5 +108,21 @@ test('every recording in test/fixtures/recordings plays through tracking as expe
       const right = settled.filter((x) => x.players.length === expect.players).length;
       assert.ok(right >= settled.length * 0.95, `${f}: ${expect.players} players only ${right} of ${settled.length} ticks`);
     }
+    if (expect.ids != null) {
+      const ids = new Set(ticks.flatMap((x) => x.players.map((p) => p.id)));
+      assert.ok(ids.size <= expect.ids, `${f}: ${ids.size} different players (${[...ids]}), expected at most ${expect.ids}`);
+    }
+    if (expect.maxRise != null) {
+      // nobody's shoulders move more than `maxRise` shoulder widths up or down within a quarter of a second:
+      // an id that jumps from a standing kid to someone on the sofa has been given to the wrong body
+      const window = Math.round(0.25 / (ticks[1].t - ticks[0].t));
+      for (let i = window; i < ticks.length; i++)
+        for (const p of ticks[i].players) {
+          const was = ticks[i - window].players.find((q) => q.id === p.id);
+          if (!was) continue;
+          const rise = Math.abs(p.y - was.y) / Math.max(p.sw, was.sw);
+          assert.ok(rise <= expect.maxRise, `${f}: player ${p.id} moved ${rise.toFixed(1)} shoulder widths up or down in 0.25 s at ${ticks[i].t.toFixed(2)} s`);
+        }
+    }
   }
 });

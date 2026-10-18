@@ -2,7 +2,7 @@
 // colour and score, and nothing switches instantly. Pure logic, no camera.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { People, isUpright, lookDistance, DEFAULTS } from '../../src/people.js';
+import { People, isUpright, isPartial, lookDistance, DEFAULTS } from '../../src/people.js';
 
 // A standing person: head over shoulders over hips. cx in px, scale = shoulder width.
 function person(cx, { shoulderW = 120, top = 300 } = {}) {
@@ -174,4 +174,88 @@ test('on a slow device (tracking at 2 frames a second) kids still get in and do 
   people.match([det(person(500))], 3);
   people.tick(3.45);
   assert.equal(kid.present, true);
+});
+
+// A grown-up lying on the sofa: shoulders low in the picture and narrow, under where a kid stands.
+const sofa = (cx) => person(cx, { shoulderW: 100, top: 440 });
+const standing = (cx) => person(cx, { shoulderW: 160, top: 160 });
+
+test('a grown-up on the sofa under a standing kid is not the kid, even when the model only finds one of them per frame', () => {
+  const people = new People();
+  people.setView(1280, 720);
+  run(people, [det(standing(640)), det(sofa(640))], 0, 1);
+  assert.equal(people.players.length, 2);
+  const kid = people.players.find((p) => p.sh.y < 300);
+  const adult = people.players.find((p) => p.sh.y > 400);
+  assert.ok(kid && adult);
+  // the model flickers: a stretch of only the adult, a stretch of only the kid, then both, over and over
+  let t = 1;
+  for (let round = 0; round < 6; round++) {
+    for (const dets of [[det(sofa(640))], [det(standing(640 + 200 * (round % 2)))], [det(standing(640)), det(sofa(640))]]) {
+      for (let i = 0; i < 30; i++, t += 1 / 30) {
+        for (const [p, d] of people.match(dets, t)) {
+          const low = d.px[11].y > 400;
+          assert.equal(p.id, low ? adult.id : kid.id, `at ${t.toFixed(2)} s the ${low ? 'adult' : 'kid'} got id ${p.id}`);
+        }
+        people.tick(t);
+      }
+    }
+  }
+  assert.equal(people.players.length, 2, 'nobody was re-admitted as someone new');
+});
+
+test('a kid still matches through a jump or a crouch, and when coming back after a dropout', () => {
+  const people = new People();
+  people.setView(1280, 720);
+  run(people, [det(standing(640))], 0, 1);
+  const kid = people.players[0];
+  let t = 1;
+  const at = (top) => (people.match([det(person(640, { shoulderW: 160, top }))], t), people.tick(t), (t += 1 / 30));
+  for (let i = 0; i < 20; i++) at(160 - 6 * i); // a jump: up 120 px in two thirds of a second...
+  for (let i = 20; i >= 0; i--) at(160 - 6 * i); // ...and down again
+  for (let i = 0; i < 30; i++) at(160 + 5 * i); // a crouch: down 150 px in a second...
+  for (let i = 30; i >= 0; i--) at(160 + 5 * i); // ...and up again
+  assert.equal(people.players.length, 1, 'the same kid throughout');
+  run(people, [], t, 2); // gone for 2 s, then back standing where they were
+  assert.deepEqual(run(people, [det(standing(660))], t + 2, 0.1), [kid.id]);
+});
+
+test('a body half out of the picture is matched sideways only and never starts probation', () => {
+  const W = 1280;
+  const H = 720;
+  assert.equal(isPartial(standing(640), W, H), false);
+  assert.equal(isPartial(standing(60), W, H), true, 'a shoulder past the left edge');
+  assert.equal(isPartial(person(640, { shoulderW: 300, top: 500 }), W, H), true, 'hips below the bottom: standing right by the camera');
+  const people = new People();
+  people.setView(W, H);
+  run(people, [det(standing(300))], 0, 1);
+  const kid = people.players[0];
+  // walks out of the left side: the model squeezes the half body into a small, misplaced skeleton
+  run(people, [det(person(60, { shoulderW: 40, top: 300 }))], 1, 0.3);
+  assert.equal(people.players.length, 1, 'the squeezed skeleton is still the kid');
+  run(people, [], 1.3, 3);
+  // comes back right by the camera, huge, hips off the bottom of the picture
+  const back = run(people, [det(person(150, { shoulderW: 300, top: 420 }))], 4.3, 0.2);
+  assert.deepEqual(back, [kid.id], 'recognised sideways, since height and size mean nothing at the edge');
+  // someone who only ever shows half a body never becomes a player
+  const other = new People();
+  other.setView(W, H);
+  assert.deepEqual(run(other, [det(standing(40))], 0, 2), []);
+});
+
+test('two kids crossing, one behind the other, keep their own ids even when the model misses one of them now and then', () => {
+  const people = new People();
+  people.setView(1280, 720);
+  const front = (cx) => standing(cx);
+  const behind = (cx) => person(cx, { shoulderW: 110, top: 120 }); // further from the camera: smaller, shoulders higher
+  run(people, [det(front(300)), det(behind(900))], 0, 1);
+  const [a, b] = people.players;
+  for (let t = 1, i = 0; i <= 60; t += 1 / 30, i++) {
+    const k = i / 60;
+    const dets = [det(front(300 + 600 * k)), det(behind(900 - 600 * k))];
+    if (i % 7 === 3) dets.pop(); // the kid behind is missed now and then
+    const pairs = people.match(dets, t);
+    people.tick(t);
+    for (const [p, d] of pairs) assert.equal(p.id, d === dets[0] ? a.id : b.id, `frame ${i}`);
+  }
 });
