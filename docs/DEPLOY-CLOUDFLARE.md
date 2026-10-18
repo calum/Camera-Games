@@ -5,6 +5,11 @@ five-letter room code. See [ONLINE.md](ONLINE.md) for how family play works. You
 (https://dash.cloudflare.com/sign-up). Nothing here costs money to set up; the Worker and its rooms are tiny, but
 check Cloudflare's current pricing and your dashboard usage after the first evenings, because plans change.
 
+**This project's Worker is already deployed** (route B) at
+`https://kids-camera-game-pairing.calum-4ster.workers.dev`, and the `PAIRING_URL` variable is set, so the published
+game already uses it. Merging a change under `cloudflare/` into `main` redeploys that live Worker. The steps below
+are for a fork, a fresh account, or adding the relay.
+
 Pick one: **A** deploys once from your computer, **B** deploys automatically from GitHub every time
 `cloudflare/` changes. B is the one to keep; do the one-time step first either way.
 

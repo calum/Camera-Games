@@ -6,8 +6,8 @@ Guidance for AI coding assistants working in this repo. For what the game is and
 ## What this is
 
 A webcam-controlled movement game for kids. A webcam on the TV tracks up to 4 kids with MediaPipe's pose model,
-cuts them out of the picture, and puts them in a cartoon world while they play four short levels (bubbles, rocks,
-waves, dance poses). Plain JavaScript ES modules and a canvas. **No build step and no runtime dependencies.**
+cuts them out of the picture, and puts them in a cartoon world while they play short levels (11 so far: bubbles,
+rocks, waves, digging, ducking, balloons, freeze, poses and more), chosen in a carousel level picker. Plain JavaScript ES modules and a canvas. **No build step and no runtime dependencies.**
 The only npm dependency is `puppeteer-core`, for the browser tests.
 
 ## Commands
@@ -32,6 +32,7 @@ src/main.js        game loop, state machine (loading > (setup) > menu > pick > i
 src/types.js       JSDoc typedefs: Player, Game, Level, Scene. Import with /** @import { Player } from './types.js' */
 src/tracker.js     PoseTracker (camera + engine + quality ladder) and MouseTracker; computeFeatures() -> a "player"
 src/pose-worker.js CLASSIC Web Worker running MediaPipe (it needs importScripts); returns landmarks, mask, looks
+src/pose-shared.js what the worker and MainThreadEngine share (options, mask downsampling), so tuning can't drift
 src/people.js      pure: who is who. Probation for new bodies, matching, recall of kids who come back (by look)
 src/look.js        pure: a person's clothing colours from a tiny frame copy
 src/camera.js      pure camera logic: constraints (16:9 720p wish), next-camera choice, saved camera, FpsGuard, withRetry
@@ -43,10 +44,13 @@ src/device.js      pure: phone/tablet detection and starting settings
 src/levels/        one file per level, index.js = the list (play order), kit.js = helpers + checkLevel, _template.js
 src/online.js      pure maths for family play: room codes, guest skeletons -> remote players, cut-out video frame
 src/family.js      family play glue: WebRTC pairing, sending/receiving cut-out video (see docs/ONLINE.md)
+src/room-code.js   room code format, shared with the Cloudflare Worker (no imports)
+src/online-config.js SIGNAL_URL, the pairing service address (the Pages publish writes PAIRING_URL into it)
 cloudflare/        the pairing function for family play (Worker + Durable Object); deployed separately, not part of the game
 src/person-mask.js pure maths: pose silhouette + motion + fading -> per-pixel "is a person" (no DOM)
 src/cutout.js      browser glue that cuts the kids out of the camera frame
 src/backdrops.js   animated cartoon scene per level (static layer cached, dynamic layer per frame)
+src/backdrops-extra.js scenes for the newer levels (EXTRA_SCENES); scene-kit.js = shared scene drawing helpers
 src/art.js         loads optional PNG overrides from assets/ (falls back to emoji / procedural drawing)
 src/draw.js        text, skeleton, hearts, pose icon helpers
 src/audio.js       synthesized sound effects (tones + filtered noise, no files), a few per level

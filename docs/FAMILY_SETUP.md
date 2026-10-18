@@ -4,13 +4,14 @@ A plain-language guide for families. No technical knowledge needed. If you are a
 [README](../README.md) has the short version and all the keyboard shortcuts.
 
 The game shows a cartoon world on your TV. A camera watches the room, finds the kids, and drops them into
-the picture so they can pop bubbles, dodge rocks, jump waves and copy dance poses. Up to four kids can play
-at once.
+the picture so they can pop bubbles, dodge rocks, jump waves, dig down a mine, keep balloons in the air and
+more: eleven short games in all. Up to four kids can play at once.
 
 **To play, open [https://calum.github.io/kids-camera-games/](https://calum.github.io/kids-camera-games/)** in Chrome, Edge or Safari. There is nothing to install.
 
 **Nothing is recorded or uploaded.** The camera picture is processed on your own device and never leaves it.
-After the first visit the game also works offline.
+After the first visit the game also works offline. The only exception is
+[playing with family in another home](#playing-with-family-in-another-home), which is off unless you switch it on.
 
 ## Which setup is for you?
 
@@ -60,7 +61,8 @@ kids and show its screen on the TV.
    by itself, so it will not dim or lock mid-game.
 
 There is no keyboard on a phone, so **tap the screen** to show the grown-up buttons: **▶ Start**,
-**⏭ Next level**, **⏏ Menu**, **📷 Camera** and **⛶ Full screen**. They fade away after a few seconds.
+**⏭ Next level**, **⏏ Menu**, **📷 Camera**, **👪 Family** (on the start screen) and **⛶ Full screen**. They fade
+away after a few seconds.
 
 ### Tips
 
@@ -90,6 +92,16 @@ This is how the game was built and tested.
 4. Press **F** (or click **⛶ Full screen**) for fullscreen on the TV.
 5. If the laptop has its own camera, the game may pick that one first. Press **C** to switch to the webcam.
    The game remembers your choice next time.
+
+### The setup check
+
+The very first time, the game spends about 10 seconds checking the room before the start screen: is there a
+picture, is it light enough, is everyone at a good distance (head to toe in view), and is the device fast
+enough. Each line goes green when it is fine, and anything that is not says what to do, for example "Too dark:
+turn on a light or open the curtains" or "Step back a little". On a laptop it also notices when the browser's
+graphics acceleration is turned off (which makes the game slow) and says how to turn it on. Once everything has
+passed it is not shown again. To skip it, press **Space** or **Esc**, or tap the screen. To see it again, add
+`?setup` to the end of the web address.
 
 ### Using a phone as the webcam instead
 
@@ -176,17 +188,38 @@ This makes the biggest difference to how well the game plays.
 5. A grown-up can press **Space**, or tap **▶ Start**, to start with everyone, without the arms-out step.
 6. Someone who arrives once the game is going holds their arms out for 2 seconds to join in.
 
-### The four levels
+### Choosing a game
 
-| Level | What the kids do |
+Once the players have joined, the **level picker** appears: big picture cards, with the current game in the
+middle and the ones before and after it at the sides.
+
+- **Wave a hand out to the side** to scroll: out to the right for the next game, to the left for the previous one.
+- **Both arms straight up** for about a second plays the game in the middle.
+- The last card, **Surprise!**, picks a game at random.
+- A grown-up can also tap a side card to scroll to it and the middle card to play it, or use the **←** and
+  **→** keys and **Space**.
+
+After each game the picker comes back with that game in the middle, so "again!" is just arms up. Press **Esc**
+or tap **⏏ Menu** to go back to the start so a new group can join.
+
+### The games
+
+| Game | What the kids do |
 |---|---|
 | **Pop the bubbles** (under the sea) | Wave your hands to pop bubbles. Gold ones are worth 3. |
 | **Dodge the rocks** (volcano) | Watch for the "!" then step out of the way. The team shares 5 hearts. |
 | **Jump the waves** (beach) | Count down 3-2-1 and jump as the wave rolls past. |
+| **Dig down!** (mine) | Every jump stomps the brick under your feet. Metal won't break, so step round it. TNT goes BANG! |
+| **Duck and jump** (beach) | Jump over the rolling logs and duck under the birds. |
+| **Catch the stars!** (starry night) | Touch the falling stars with your hands, and dodge the meteors when you see the "!". |
+| **Avalanche!** (snowy mountains) | Dodge the rocks, jump the rolling boulders, and hide in the gap from the giant boulder at the end. |
+| **Keep it up!** (party in the park) | Tap the balloons back up with your hands or head. Don't let them touch the floor! |
+| **Freeze!** (disco) | Dance while the music plays. When it stops, FREEZE! |
+| **Hole in the wall!** (game show) | Copy the pose in the hole before the wall reaches you. |
 | **Dance party** (disco) | Copy the stick-figure pose on screen: arms up, airplane, or hands on head, and hold it. |
 
-After the fourth level there is a winners screen, then the next round starts a little harder. Press **Esc**
-or tap **⏏ Menu** to go back to the start so a new group can join.
+Nobody is ever out. Running out of hearts just replays the game, and if the kids keep missing, the game quietly
+slows down until they are winning again.
 
 ### Grown-up controls
 
@@ -194,14 +227,37 @@ Tap the screen (or move the mouse) to show the buttons. On a laptop the keys do 
 
 | Button | Key | What it does |
 |---|---|---|
-| **▶ Start** | **Space** | Start with everyone in view (and skip the winners screen) |
+| **▶ Start** | **Space** | Start with everyone in view; in the level picker, play the game in the middle |
+| | **←** / **→** | In the level picker, show the previous or next game |
 | **⏭ Next level** | **N** | Skip to the next level |
-| **⏏ Menu** | **Esc** | Back to the start screen, so kids can join again |
+| **⏏ Menu** | **Esc** | Back one step: from a game to the picker, from the picker to the start screen |
 | **📷 Camera** | **C** | Switch to the next camera (on a phone, front or back) |
+| **👪 Family** | **O** | Open or close a family room (see below) |
 | **⛶ Full screen** | **F** | Fill the whole screen |
 | | **1** to **9** | Jump straight to a level |
 | | **B** | Show the whole camera picture instead of the cartoon cut-out |
 | | **D** | Show what the game sees (useful when something is not working) |
+
+---
+
+## Playing with family in another home
+
+Grandparents, aunts or cousins in another house can play along over the internet, appearing in the same
+cartoon world as your kids.
+
+1. On the TV, go to the start screen and press **O** (or tap **👪 Family**). The screen shows a five-letter room
+   code and a web link.
+2. Send the link to the other family. They open it on a laptop (or a tablet) with a camera, in Chrome or Edge,
+   and allow the camera and the microphone.
+3. When they connect, your screen says "connected". They see your game on their screen, and they appear cut out
+   next to your kids. They join in like anyone else: arms out like an airplane.
+4. Everyone can hear each other, and the other home hears the game's sounds too. Press **V** to mute your
+   microphone. Press **O** again to close the room.
+
+Only one other home can join at a time. While a room is open a note at the bottom of the screen says so. The
+picture and voices go straight from one home to the other, encrypted; nothing else sees them. Tips: put the TV
+in Game mode, and the other home should keep their volume moderate, or use headphones, so the game's sound does
+not echo back. This is new and has not been tried between two real homes yet, so tell us how it goes.
 
 ---
 
@@ -220,6 +276,16 @@ The game needs to see the whole body. Step back until feet and head are both in 
 a kid in front of a bright window is invisible to the camera. Press **B** to see the plain camera picture and
 check what it actually sees.
 
+**The screen says "Reconnecting the camera..." or "Waking up the pose detector...".**
+The game lost the camera picture (a loose cable, another app took the camera, the phone went to sleep) or the
+tracking got stuck, and it is fixing it by itself. The game pauses and carries on when it is back. If it keeps
+happening, check the camera cable and close other apps that use the camera, such as video calls.
+
+**The setup check says graphics acceleration is off.**
+In Edge, open Settings, then System and performance, and turn on "Use graphics acceleration when available". In
+Chrome it is Settings, then System, "Use graphics acceleration when available". Then close and reopen the
+browser. Without it the game runs, but slowly.
+
 **A kid's arms-out pose is not being noticed.**
 Arms need to be straight out to the sides, roughly level with the shoulders, and held still for 3 seconds.
 Small children are harder for the camera. Make sure both hands are in the picture and not hidden behind
@@ -229,6 +295,10 @@ another kid. Press **D** to see what the game thinks each kid is doing.
 Close other programs and browser tabs. Plug the laptop into power (many laptops slow down on battery). On a
 phone, let it cool down. The game switches to a lighter tracking mode by itself on slow machines. If it is
 still slow, add `?lite` to the end of the web address, which turns off the glow effects.
+
+**Asked to send a "debug line" for a problem?**
+Add `?debug` to the end of the web address and press **F12** (on a laptop), then click Console. Every 5 seconds
+the game writes a line starting with `[kids-camera-games debug]`. Copy one and send it.
 
 **There is a delay between moving and seeing it on the TV.**
 Put the TV in Game mode. If you are mirroring a phone wirelessly, a cable will be much snappier. Wi-Fi
@@ -267,8 +337,8 @@ help, start it with a different port: open a Terminal in the game folder and typ
   last long.
 - Prop phones and webcams so they cannot fall. A heavy book or a stand behind the phone is better than
   balancing it on the TV's edge.
-- Keep sessions short, with water and rest breaks. Four levels is a good run for small kids.
-- The dance level has moving disco spotlights. If anyone in the family is sensitive to flashing or moving
-  lights, skip that level with **N**.
+- Keep sessions short, with water and rest breaks. Three or four games is a good run for small kids.
+- Dance party and Freeze! have moving disco spotlights. If anyone in the family is sensitive to flashing or
+  moving lights, choose other games in the picker.
 
 Have fun.
