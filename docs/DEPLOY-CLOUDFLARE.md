@@ -82,8 +82,9 @@ Most homes connect directly. For the roughly one in ten whose router blocks that
 
 ## Checking it works / troubleshooting
 
-- Open `https://<your worker>/ice` in a browser: it should show a JSON list of servers (with a `turn:` entry once
-  the relay is set up).
+- Open `https://<your worker>/` in a browser: it should say "Kids Camera Game pairing. Nothing to see here."
+- To check the relay: relay credentials only go to browsers in a live room, so open a room (press **O**), then in
+  the browser console (F12) type `__game.family.iceServers`. Once the relay is set up it lists a `turn:` entry.
 - The host's screen says "reaching the pairing service..." for more than a few seconds: the game has no or a wrong
   address. Check the `PAIRING_URL` variable and that **Check and publish** ran after you set it.
 - The guest keeps saying "Looking for family room": the code is wrong, or the host has not opened the room (the

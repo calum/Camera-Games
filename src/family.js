@@ -34,12 +34,22 @@ class BroadcastSignal {
 
 /**
  * Pairing messages through the Cloudflare function: a WebSocket to the room. Reconnects by itself, so a guest
- * who arrives before the host (the room does not exist yet) just keeps trying until it does.
+ * who arrives before the host (the room does not exist yet) just keeps trying until it does. The host brings the
+ * key it opened the room with, so its reconnects get back in and a stranger with the code cannot take its place.
+ * The function's own first message on each socket is the STUN/TURN servers, handed to onIce.
  */
 class SocketSignal {
-  constructor(/** @type {string} */ base, /** @type {string} */ code, /** @type {string} */ role, /** @type {(m: any) => void} */ onMessage) {
-    this.url = `${base.replace(/^http/, 'ws').replace(/\/$/, '')}/room/${code}?role=${role}`;
+  constructor(
+    /** @type {string} */ base,
+    /** @type {string} */ code,
+    /** @type {string} */ role,
+    /** @type {(m: any) => void} */ onMessage,
+    /** @type {(ice: any[]) => void} */ onIce,
+  ) {
+    const key = role === 'host' ? `&key=${hostKey()}` : '';
+    this.url = `${base.replace(/^http/, 'ws').replace(/\/$/, '')}/room/${code}?role=${role}${key}`;
     this.onMessage = onMessage;
+    this.onIce = onIce;
     this.up = false;
     this.closed = false;
     this.ws = null;
@@ -59,7 +69,9 @@ class SocketSignal {
     ws.onopen = () => (this.up = true);
     ws.onmessage = (e) => {
       try {
-        this.onMessage(JSON.parse(e.data));
+        const m = JSON.parse(e.data);
+        if (m.from === 'server') Array.isArray(m.ice) && m.ice.length && this.onIce(m.ice);
+        else this.onMessage(m);
       } catch {
         // not one of ours
       }
@@ -84,6 +96,12 @@ class SocketSignal {
   }
 }
 
+/** A fresh random key for each room a host opens (it never leaves this page and the pairing function). */
+function hostKey() {
+  const b = crypto.getRandomValues(new Uint8Array(18));
+  return [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+}
+
 export class Family {
   /**
    * @param {{ canvas: HTMLCanvasElement, search: string, origin?: string, signal?: string }} o
@@ -96,6 +114,7 @@ export class Family {
     this.signalOverride = new URLSearchParams(search).has('signal'); // then the guest's link has to carry it too
     this.iceServers = [];
     this.iceReady = Promise.resolve();
+    this._iceArrived = () => {};
     /** @type {'off' | 'host' | 'guest'} */
     this.role = 'off';
     this.code = '';
@@ -161,25 +180,32 @@ export class Family {
   }
 
   _signal(/** @type {string} */ code, /** @type {string} */ role, /** @type {(m: any) => void} */ onMessage) {
-    return this.signalBase ? new SocketSignal(this.signalBase, code, role, onMessage) : new BroadcastSignal(code, onMessage);
+    if (!this.signalBase) return new BroadcastSignal(code, onMessage);
+    return new SocketSignal(this.signalBase, code, role, onMessage, (ice) => {
+      this.iceServers = ice;
+      this._iceArrived();
+    });
   }
 
-  /** The servers that let the connection get through home routers: asked from the pairing function. */
+  /**
+   * The servers that let the connection get through home routers. The pairing function sends them as the first
+   * message on the room socket (only a browser in a live room gets relay credentials); until then, plain STUN.
+   */
   _getIce() {
+    this._iceArrived = () => {};
     if (!this.signalBase) {
       this.iceServers = []; // two windows on one computer need none
+      this.iceReady = Promise.resolve();
       return;
     }
     this.iceServers = FALLBACK_ICE;
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 4000);
-    this.iceReady = fetch(`${this.signalBase.replace(/^ws/, 'http').replace(/\/$/, '')}/ice`, { signal: ctl.signal })
-      .then((r) => r.json())
-      .then((j) => {
-        if (Array.isArray(j.iceServers) && j.iceServers.length) this.iceServers = j.iceServers;
-      })
-      .catch(() => {})
-      .finally(() => clearTimeout(timer));
+    this.iceReady = new Promise((done) => {
+      const timer = setTimeout(done, 4000); // an older pairing function never sends them
+      this._iceArrived = () => {
+        clearTimeout(timer);
+        done(undefined);
+      };
+    });
   }
 
   /** Key O / button: the host opens a room; anyone in a room leaves it. */

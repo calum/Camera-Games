@@ -145,8 +145,8 @@ test('FAMILY (Cloudflare pairing function): two windows pair through the real Wo
     for (let i = 0; i < 120 && !/Ready on/.test(log); i++) await wait(500);
     assert.match(log, /Ready on/, 'the pairing function started');
     const signal = log.match(/Ready on (http:\/\/[^\s]+)/)[1]; // wrangler picks another port when ours is busy
-    const ice = await (await fetch(`${signal}/ice`)).json();
-    assert.ok(ice.iceServers.length >= 1 && ice.iceServers[0].urls[0].startsWith('stun:'), 'STUN servers are offered even without TURN secrets');
+    assert.equal((await fetch(`${signal}/ice`)).status, 200);
+    assert.doesNotMatch(await (await fetch(`${signal}/ice`)).text(), /stun:|turn:/, 'no open address hands out connection servers');
 
     const host = await openGame(browser, `${url}?mouse&signal=${encodeURIComponent(signal)}`, { window: true }); // every page in its own window, or the first tab is hidden once more windows open
     await waitForState(host.page, 'menu', 60000);
@@ -168,6 +168,18 @@ test('FAMILY (Cloudflare pairing function): two windows pair through the real Wo
     assert.equal(await stranger.page.evaluate(() => window.__game.family.state), 'connecting');
     assert.equal(await host.page.evaluate(() => window.__game.family.state), 'connected', 'the family is still connected');
     assert.equal(await guest.page.evaluate(() => window.__game.family.state), 'connected');
+    assert.ok((await host.page.evaluate(() => window.__game.family.iceServers))[0].urls[0].startsWith('stun:'), 'the room socket brought the STUN servers');
+
+    // a stranger with the right code cannot take the host's place
+    const ws = signal.replace(/^http/, 'ws');
+    const intruder = await new Promise((done) => {
+      const s = new WebSocket(`${ws}/room/${code}?role=host&key=strangersOwnKey_12345`);
+      s.onopen = () => done('in');
+      s.onerror = () => done('refused');
+    });
+    assert.equal(intruder, 'refused');
+    await wait(3000);
+    assert.equal(await host.page.evaluate(() => window.__game.family.state), 'connected', 'the real host is still the host');
   } finally {
     await browser.close();
     worker.kill();
