@@ -69,7 +69,10 @@ test('a saved recording reads back, and other files get a plain-word error', () 
   assert.deepEqual(recordingStart(rec), { state: 'play', level: 'bubbles', levelT: 4 });
   assert.throws(() => parseRecording('not json'), /not a game recording/);
   assert.throws(() => parseRecording('{"hello":1}'), /not a game recording/);
-  assert.match(recordingName(new Date(2026, 9, 18, 18, 5, 9)), /^kcg-2026-10-18-180509$/);
+  // Saved before the rename to Camera Games: still loads.
+  const old = parseRecording(JSON.stringify({ ...clip(1, () => [kid(0.5)]), kind: 'kids-camera-games-recording' }));
+  assert.equal(old.frames.length, rec.frames.length);
+  assert.match(recordingName(new Date(2026, 9, 18, 18, 5, 9)), /^camera-games-2026-10-18-180509$/);
 });
 
 test('a replay goes through the real who-is-who and pose code: a kid joins after probation and their arms-up registers', () => {

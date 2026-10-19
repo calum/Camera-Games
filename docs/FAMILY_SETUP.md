@@ -1,4 +1,4 @@
-# Setting up Kids Camera Games at home
+# Setting up Camera Games at home
 
 A plain-language guide for families. No technical knowledge needed. If you are a developer, the
 [README](../README.md) has the short version and all the keyboard shortcuts.
@@ -7,7 +7,7 @@ The game shows a cartoon world on your TV. A camera watches the room, finds the 
 the picture so they can pop bubbles, dodge rocks, jump waves, dig down a mine, keep balloons in the air and
 more: eleven short games in all. Up to four kids can play at once.
 
-**To play, open [https://calum.github.io/kids-camera-games/](https://calum.github.io/kids-camera-games/)** in Chrome, Edge or Safari. There is nothing to install.
+**To play, open [https://calum.github.io/camera-games/](https://calum.github.io/camera-games/)** in Chrome, Edge or Safari. There is nothing to install.
 
 **Nothing is recorded or uploaded.** The camera picture is processed on your own device and never leaves it.
 After the first visit the game also works offline. The only exception is
@@ -45,7 +45,7 @@ kids and show its screen on the TV.
 
 ### Steps
 
-1. Open [https://calum.github.io/kids-camera-games/](https://calum.github.io/kids-camera-games/) in your phone's browser (Safari on iPhone and iPad, Chrome on Android).
+1. Open [https://calum.github.io/camera-games/](https://calum.github.io/camera-games/) in your phone's browser (Safari on iPhone and iPad, Chrome on Android).
 2. Tap **Allow** when it asks to use the camera. The game starts with the **front** camera, the one on the
    screen side, so the kids can see the screen while the camera sees them. To use the back camera instead,
    tap the screen and then **📷 Camera**.
@@ -87,7 +87,7 @@ This is how the game was built and tested.
 
 1. Plug the webcam into the laptop and the HDMI cable into the TV. Set the laptop to show on the TV
    (on Windows press the Windows key and P, on a Mac use Displays in System Settings).
-2. Open [https://calum.github.io/kids-camera-games/](https://calum.github.io/kids-camera-games/) in Chrome or Edge.
+2. Open [https://calum.github.io/camera-games/](https://calum.github.io/camera-games/) in Chrome or Edge.
 3. Click **Allow** when the browser asks for the camera.
 4. Press **F** (or click **⛶ Full screen**) for fullscreen on the TV.
 5. If the laptop has its own camera, the game may pick that one first. Press **C** to switch to the webcam.
@@ -298,11 +298,11 @@ still slow, add `?lite` to the end of the web address, which turns off the glow 
 
 **Asked to send a "debug line" for a problem?**
 Add `?debug` to the end of the web address and press **F12** (on a laptop), then click Console. Every 5 seconds
-the game writes a line starting with `[kids-camera-games debug]`. Copy one and send it.
+the game writes a line starting with `[camera-games debug]`. Copy one and send it.
 
 **Asked to send a recording?**
 With `?debug` on, the game remembers the last minute. Right after something goes wrong, press **R** (or tap the
-screen and press **💾 Save last minute**). A file starting with `kcg-` appears in your Downloads; send it. It has
+screen and press **💾 Save last minute**). A file starting with `camera-games-` appears in your Downloads; send it. It has
 the stick-figure skeletons and timings only, no pictures. **G** (or **🎥 Video**) also records the screen, which
 shows the children, so only turn it on if you are happy to share that. Nothing is uploaded by the game itself.
 

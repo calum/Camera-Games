@@ -1,4 +1,4 @@
-# Kids Camera Game: Plan
+# Camera Games: Plan
 
 A "Nex Playground"-style game for our own kids: a webcam on the TV tracks their bodies,
 and they play short levels (pop, dodge, jump, dig, dance and more) using **our own art**.
@@ -115,7 +115,7 @@ code changes. See `assets/README.md`. New art types are one line in `src/art.js`
   setup check warns when the browser's graphics acceleration is off.
 * **Raspberry Pi 5:** expect about 15-25 fps tracking. Use `?lite` to drop glow effects.
   The game keeps drawing at 60 fps between tracking updates. A Pi 4 is borderline.
-* **Phone / iPad:** open https://calum.github.io/kids-camera-games/ (HTTPS, so the camera is allowed).
+* **Phone / iPad:** open https://calum.github.io/camera-games/ (HTTPS, so the camera is allowed).
   Phones and tablets start on the lite model without glow effects, tracking runs in a worker so drawing
   stays smooth, the screen is kept awake, and tapping shows the grown-up buttons.
 

@@ -1,5 +1,5 @@
 # Checks every pull request (types + unit tests) and publishes main to GitHub Pages:
-#   https://calum.github.io/kids-camera-games/
+#   https://calum.github.io/camera-games/
 # One-time setup: repository Settings > Pages > Build and deployment > Source: "GitHub Actions".
 # The browser tests (npm run test:e2e) need a real Chrome and about 10 minutes, so they run locally.
 name: Check and publish

@@ -168,6 +168,6 @@ Key ideas to preserve:
 
 ## Ideas and status
 
-See the roadmap in [docs/PLAN.md](docs/PLAN.md). The game is published at https://calum.github.io/kids-camera-games/
+See the roadmap in [docs/PLAN.md](docs/PLAN.md). The game is published at https://calum.github.io/camera-games/
 (GitHub Pages, from `main`). Next up: more whole-body levels (the kids' favourites are dodging and jumping),
 own art and sound, silhouette-only gameplay for big groups, and a Raspberry Pi kiosk build.

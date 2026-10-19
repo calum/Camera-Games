@@ -190,7 +190,7 @@ export function drawReconnecting(ctx, g, what, secs) {
 /** @param {CanvasRenderingContext2D} ctx  @param {G} g  @param {string} status */
 export function drawLoading(ctx, g, status) {
   const u = g.u;
-  text(ctx, 'Kids Camera Game', g.W / 2, g.H * 0.4, 110 * u);
+  text(ctx, 'Camera Games', g.W / 2, g.H * 0.4, 110 * u);
   text(ctx, status, g.W / 2, g.H * 0.55, 48 * u);
 }
 
@@ -204,7 +204,7 @@ export function drawMenu(ctx, g, { lobby, mobile, portrait, slowGraphics, mouseM
   ctx.fillStyle = 'rgba(8,12,30,0.3)';
   ctx.fillRect(0, 0, g.W, g.H);
   // All the words live in a band at the top so they never cover the kids.
-  text(ctx, 'Kids Camera Game', g.W / 2, g.H * 0.07, 96 * u, { color: '#ffe14d' });
+  text(ctx, 'Camera Games', g.W / 2, g.H * 0.07, 96 * u, { color: '#ffe14d' });
   text(ctx, 'Arms out like an airplane for 3 seconds to JOIN!', g.W / 2, g.H * 0.15, 44 * u);
   text(ctx, "Stand back so the camera sees all of you. Anyone who doesn't join sits this one out.", g.W / 2, g.H * 0.2, 26 * u);
   // Who has joined: a green countdown ring over each airplane kid, a nudge over the others.

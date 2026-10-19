@@ -1,4 +1,4 @@
-# Kids Camera Games
+# Camera Games
 
 A movement game for kids, in the spirit of the Nex Playground: put a webcam on the TV and the kids
 jump, dodge, wave and dance their way through short levels. Their bodies are tracked by the camera, lifted
@@ -47,7 +47,7 @@ is just arms up. The sets are in `src/levels/sets.js`.
 
 ## Quick start
 
-**Play online:** open **https://calum.github.io/kids-camera-games/** in Chrome, Edge or Safari, tap **Allow**
+**Play online:** open **https://calum.github.io/camera-games/** in Chrome, Edge or Safari, tap **Allow**
 for the camera, then press **F** or tap **⛶ Full screen**. Nothing is uploaded: the tracking runs on your
 device, and after the first visit the game also works offline. (The one exception is
 [family play](#playing-with-family-in-another-home), which you switch on yourself.)
@@ -166,11 +166,11 @@ The game asks the camera for a 16:9 picture (1280x720). Many webcams crop the si
   pauses meanwhile and carries on afterwards. If it keeps happening, check the cable and close other apps that
   use the camera.
 - **Reporting a problem:** open the game with `?debug`, press **F12** and open the Console. Every 5 seconds the
-  game writes one line starting with `[kids-camera-games debug]` (frame rate, tracking, model, camera, graphics
+  game writes one line starting with `[camera-games debug]` (frame rate, tracking, model, camera, graphics
   card); copy and paste that line.
 - **Recording a bad moment:** in debug mode (`?debug` or **D**) the game keeps the last minute in memory. When
   something goes wrong, press **R** (or tap **💾 Save last minute**) straight away: a file like
-  `kcg-2026-10-18-181605.json` lands in Downloads with every skeleton the tracker saw, how fast everything ran
+  `camera-games-2026-10-18-181605.json` lands in Downloads with every skeleton the tracker saw, how fast everything ran
   (frame rate, tracking round trip, quality rung, camera rate) and what happened (screens, scores, misses,
   warnings). Send that file. It holds no pictures. **G** (or **🎥 Video**) also records the game screen, which
   does show the kids, so it is only ever on when a grown-up turns it on; **R** then saves the last 30-60 s as

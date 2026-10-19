@@ -30,7 +30,7 @@ test('serves the game page at /', async () => {
   const r = await get('/');
   assert.equal(r.status, 200);
   assert.match(r.type, /text\/html/);
-  assert.match(r.body.toString(), /Kids Camera Game/);
+  assert.match(r.body.toString(), /Camera Games/);
 });
 
 test('serves ES modules as JavaScript', async () => {
@@ -86,14 +86,14 @@ test('malformed URLs do not crash the server', async () => {
 });
 
 test('can serve the game from a sub-folder, like GitHub Pages does, and nothing outside it', async () => {
-  const sub = createGameServer({ base: '/kids-camera-games/' });
+  const sub = createGameServer({ base: '/camera-games/' });
   await new Promise((r) => sub.listen(0, '127.0.0.1', r));
   const port = sub.address().port;
   const fetchStatus = (p) => new Promise((resolve) => http.get({ host: '127.0.0.1', port, path: p }, (r) => (r.resume(), resolve(r.statusCode))));
   try {
-    assert.equal(await fetchStatus('/kids-camera-games/'), 200);
-    assert.equal(await fetchStatus('/kids-camera-games/src/main.js'), 200);
-    assert.equal(await fetchStatus('/kids-camera-games/manifest.webmanifest'), 200);
+    assert.equal(await fetchStatus('/camera-games/'), 200);
+    assert.equal(await fetchStatus('/camera-games/src/main.js'), 200);
+    assert.equal(await fetchStatus('/camera-games/manifest.webmanifest'), 200);
     assert.equal(await fetchStatus('/src/main.js'), 404, 'root paths are not served: a /src/... request would be a bug');
   } finally {
     sub.close();

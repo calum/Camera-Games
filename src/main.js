@@ -742,7 +742,7 @@ function watchDebug(now) {
   dbg.t = now;
   dbg.frames = 0;
   dbg.seq = seq;
-  if (g.debug) console.log(`[kids-camera-games debug] ${debugLines().join(' | ')}`);
+  if (g.debug) console.log(`[camera-games debug] ${debugLines().join(' | ')}`);
 }
 
 // ------------------------------------------------------------------ recordings (debug mode, see debug-record.js)
