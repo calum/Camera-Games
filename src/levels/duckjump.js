@@ -65,14 +65,18 @@ const duckjump = {
       const span = g.W + 300 * u;
       h.x = h.dir > 0 ? -150 * u + (h.t / CROSS_TIME) * span : g.W + 150 * u - (h.t / CROSS_TIME) * span;
       for (const p of players) {
-        if (!h.judged.has(p.id) && Math.abs(p.cx - h.x) < REACH * u) h.judged.set(p.id, { cross: g.now, done: false });
+        if (!h.judged.has(p.id) && Math.abs(p.cx - h.x) < REACH * u) h.judged.set(p.id, { cross: g.now, done: false, ok: false });
       }
       for (const [id, j] of h.judged) {
-        if (j.done || g.now < j.cross + LATE) continue;
-        j.done = true;
+        if (j.done) continue;
         const p = g.players.find((q) => q.id === id);
+        // Look every frame up to the deadline, not only at it: a kid still ducking when the bird has gone by
+        // has a lastDuck of "now", which is after the window, and was judged a BONK (Calum's play test).
+        if (p && dodged(h.kind, p, j.cross)) j.ok = true;
+        if (g.now < j.cross + LATE) continue;
+        j.done = true;
         if (!p) continue;
-        const ok = dodged(h.kind, p, j.cross);
+        const ok = j.ok;
         this.feedback.push({
           x: p.cx,
           y: Math.max(170 * u, p.px[0].y - 240 * u),

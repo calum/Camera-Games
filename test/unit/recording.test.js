@@ -112,6 +112,15 @@ test('every recording in test/fixtures/recordings plays through tracking as expe
       const ids = new Set(ticks.flatMap((x) => x.players.map((p) => p.id)));
       assert.ok(ids.size <= expect.ids, `${f}: ${ids.size} different players (${[...ids]}), expected at most ${expect.ids}`);
     }
+    if (expect.jumps != null || expect.ducks != null) {
+      // one kid's moves: each jump and each duck counted once (standing up from a duck is neither)
+      const ids = new Set(ticks.flatMap((x) => x.players.map((p) => p.id)));
+      assert.equal(ids.size, 1, `${f}: jumps and ducks are counted for clips of one player`);
+      const me = ticks.map((x) => x.players[0]).filter(Boolean);
+      const ducks = me.filter((p, i) => i > 0 && p.pose.includes('duck') && !me[i - 1].pose.includes('duck')).length;
+      if (expect.jumps != null) assert.equal(me.at(-1).jumps - me[0].jumps, expect.jumps, `${f}: jumps`);
+      if (expect.ducks != null) assert.equal(ducks, expect.ducks, `${f}: ducks`);
+    }
     if (expect.maxRise != null) {
       // nobody's shoulders move more than `maxRise` shoulder widths up or down within a quarter of a second:
       // an id that jumps from a standing kid to someone on the sofa has been given to the wrong body

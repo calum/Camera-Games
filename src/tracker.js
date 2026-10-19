@@ -64,10 +64,13 @@ export function computeFeatures(p, now, { skipJump = false } = {}) {
     { x: knee.x, y: knee.y, r: r * 0.8 },
   ];
 
-  // Jump = hips rise well above a slowly-adapting baseline (falls fast, rises slowly).
+  // Jump = hips rise well above a slowly-adapting baseline (falls fast, rises slowly). Not while crouching:
+  // a baseline that fell with the hips into a duck made standing back up look like a jump for seconds, and
+  // that froze the duck baseline below, so the next duck was seen late or not at all (Calum's play test).
+  const crouching = p.headBase !== undefined && px[0].y - p.headBase > DUCK_DROP * 0.5 * shoulderW;
   if (!skipJump) {
     if (p.hipBase === undefined) p.hipBase = hip.y;
-    p.hipBase += (hip.y - p.hipBase) * (hip.y > p.hipBase ? 0.25 : 0.01);
+    if (!crouching || hip.y < p.hipBase) p.hipBase += (hip.y - p.hipBase) * (hip.y > p.hipBase ? 0.25 : 0.01);
     const up = (p.hipBase - hip.y) / torso;
     const jumping = up > 0.28;
     if (jumping) {
@@ -78,11 +81,12 @@ export function computeFeatures(p, now, { skipJump = false } = {}) {
   }
 
   // Duck baseline: the head's standing height. It follows the head up quickly (standing up straight,
-  // stepping back) and down only slowly (stepping closer), and holds still while jumping so the top of a
+  // stepping back) and down only slowly (stepping closer), barely at all while crouching (a long duck must not
+  // become the new standing height), and holds still while jumping so the top of a
   // jump doesn't make the landing look like a duck. Measured in shoulder widths, like the poses.
   const head = px[0].y;
   if (p.headBase === undefined) p.headBase = head;
-  else if (!p.wasJump) p.headBase += (head - p.headBase) * (head < p.headBase ? 0.25 : 0.01);
+  else if (!p.wasJump) p.headBase += (head - p.headBase) * (head < p.headBase ? 0.25 : crouching ? 0.002 : 0.01);
 
   // Motion: average speed of the main joints in shoulder widths per second, smoothed over ~0.3 s, so a
   // single jittery frame can't make a frozen kid look like they moved.
