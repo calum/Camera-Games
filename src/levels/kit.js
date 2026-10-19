@@ -2,6 +2,7 @@
 /** @import { Player, Level, Game } from '../types.js' */
 import { sfx } from '../audio.js';
 import { FULL_AREA } from '../calibrate.js';
+import { syncForts } from '../forts.js';
 
 export const rand = (/** @type {number} */ a, /** @type {number} */ b) => a + Math.random() * (b - a);
 /** @template T @param {T[]} arr @returns {T} */
@@ -23,6 +24,73 @@ export const standX = (g, f) => {
   const a = g.area ?? FULL_AREA;
   return (a.x0 + f * (a.x1 - a.x0)) * g.W;
 };
+
+// Fort games (docs/FORT-GAMES.md): a level with `forts: true` draws every player in their own fort.
+//   forts(g): this frame's forts, left to right. Use f.hands / f.circles / f.head (already in fort space), and
+//             f.p for the player (null for an empty fort: a kid who dropped out, or the spare fort of a lone kid).
+//   wobbleFort(g, p) / spinFort(g, p): the kid's picture wobbles like a jelly, or spins round once. Funny on a hit.
+//   liftFort(g, p, px): raise the kid's picture in their fort (flying), 0 = back on the floor.
+/** @param {Game} g */
+export const forts = (g) => syncForts(g);
+/** @param {Game} g @param {Player} p @param {number} [amount] */
+export const wobbleFort = (g, p, amount) => g.fortLayout?.wobble(p.id, amount);
+/** @param {Game} g @param {Player} p */
+export const spinFort = (g, p) => g.fortLayout?.spin(p.id);
+/** @param {Game} g @param {Player} p @param {number} px */
+export const liftFort = (g, p, px) => g.fortLayout?.lift(p.id, px);
+
+/**
+ * Arm pumps, the fort games' "throw": a hand that was down by the body (wrist below the shoulders) goes up above
+ * the head. It needs no speed, only where the wrist is, so it works at a slow 10 tracked frames a second, and a
+ * kid can do it standing still. Measured in shoulder widths, with a gap between "down" and "up" (hysteresis).
+ */
+export class ArmPumps {
+  constructor() {
+    /** @type {Map<number, { 15: string, 16: string, down15: number, down16: number }>} */
+    this.state = new Map();
+  }
+
+  /**
+   * The wrists (15 = the kid's left, 16 = right) that just went up, each with how long it was down first (s: a
+   * longer wind-up can make a bigger snowball). Call once per frame for each player.
+   * @param {Player} p @param {number} dt
+   * @returns {{ wrist: 15 | 16, wound: number }[]}
+   */
+  update(p, dt) {
+    let st = this.state.get(p.id);
+    if (!st) this.state.set(p.id, (st = { 15: 'up', 16: 'up', down15: 0, down16: 0 })); // lower an arm first
+    const sw = Math.max(1, p.shoulderW);
+    const top = Math.min(p.px[0].y, p.sh.y - 0.6 * sw); // above the head (or well above the shoulders)
+    /** @type {{ wrist: 15 | 16, wound: number }[]} */
+    const out = [];
+    for (const w of /** @type {(15 | 16)[]} */ ([15, 16])) {
+      const y = p.px[w].y;
+      const key = /** @type {'down15' | 'down16'} */ (`down${w}`);
+      if (st[w] === 'up' && y > p.sh.y + 0.35 * sw) {
+        st[w] = 'down';
+        st[key] = 0;
+      } else if (st[w] === 'down') {
+        st[key] += dt;
+        if (y < top) {
+          st[w] = 'up';
+          out.push({ wrist: w, wound: st[key] });
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Is this wrist down, winding up? @param {Player} p @param {15 | 16} wrist */
+  isDown(p, wrist) {
+    return this.state.get(p.id)?.[wrist] === 'down';
+  }
+
+  /** @param {Player} p @param {15 | 16} wrist */
+  wound(p, wrist) {
+    const st = this.state.get(p.id);
+    return st ? st[wrist === 15 ? 'down15' : 'down16'] : 0;
+  }
+}
 
 /**
  * The first player whose hand is within `r + slack` of (x, y), or null. Hands are wrists and index fingertips.

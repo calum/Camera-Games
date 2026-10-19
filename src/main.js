@@ -5,12 +5,13 @@ import { sfx, unlock, music } from './audio.js';
 import { moodFor, musicOn, saveMusicOn } from './music.js';
 import { Ease } from './ease.js';
 import { loadArt, registerArt } from './art.js';
-import { text, drawSkeleton } from './draw.js';
+import { text, drawSkeleton, drawPoseIcon } from './draw.js';
 import { Lobby, lateJoin } from './lobby.js';
 import { Carousel, pickerChoices, setChoices, carouselLayout, carouselCardAt, surprisePick } from './picker.js';
 import { SETS, setPlaylist } from './levels/sets.js';
 import { drawParticles, drawHud, drawSetup, drawCalibration, drawReconnecting, drawLoading, drawMenu, drawPick, drawIntro, drawOutro, drawToast, drawDebugPanel } from './screens.js';
 import { Cutout } from './cutout.js';
+import { syncForts, applyFort, fortOf } from './forts.js';
 import { Backdrops } from './backdrops.js';
 import { loadSavedCamera } from './camera.js';
 import { defaultSettings } from './device.js';
@@ -218,6 +219,8 @@ function startLevel(i) {
   g.level = LEVELS[levelIdx];
   g.levelEnd = null;
   g.team.hearts = g.team.maxHearts;
+  g.fortLayout?.reset(); // fort games: everyone gets a fresh fort, placed by where they stand now
+  g.forts = undefined;
   ease.newLevel();
   setDiff();
   g.level.start(g);
@@ -254,6 +257,8 @@ function afterLevel(skip = false) {
 const nextLevel = () => afterLevel(true);
 
 const inLevel = () => state === 'intro' || state === 'play' || state === 'outro';
+// A fort game is on (src/forts.js): every player is drawn in their own fort instead of where they stand.
+const fortsOn = () => !!(g.level?.forts && inLevel() && g.forts);
 const reconnecting = () => (pose && tracker === pose && state !== 'loading' ? pose.reconnecting : null);
 
 // ------------------------------------------------------------------ setup
@@ -516,6 +521,7 @@ function update(dt) {
     else if (!q.txt && !q.ring) q.vy += 900 * g.u * dt;
   }
   g.particles = g.particles.filter((q) => q.life > 0);
+  if (g.level?.forts && inLevel()) syncForts(g);
 
   if (state === 'setup') {
     updateSetup(dt);
@@ -650,8 +656,53 @@ function drawBackground() {
   // cartoon world, with the kids cut out of the camera picture and placed in it
   const custom = g.level && inLevel() && typeof g.level.backdrop === 'object' ? g.level.backdrop : undefined;
   backdrops.draw(ctx, backdropId(), g.W, g.H, g.now, custom);
+  if (fortsOn()) {
+    // Fort games: each kid's slice of the picture goes into their own fort. Guests come from their own picture.
+    for (const f of /** @type {import('./forts.js').Fort[]} */ (g.forts)) {
+      if (!f.p || (!f.p.remote && !(camera && cutoutReady))) continue;
+      ctx.save();
+      applyFort(ctx, f, g.H);
+      if (f.p.remote) family.drawGuest(ctx, g.W, g.H);
+      else cutout.draw(ctx, /** @type {any} */ (r));
+      ctx.restore();
+    }
+    // Someone watching (not playing yet) has no fort: they show faintly where they really stand, so they can see
+    // themselves and join with arms out (lateJoin), and then they get a fort of their own.
+    if (camera && cutoutReady) {
+      for (const p of g.players) {
+        if (!p.present || !p.excluded || p.remote) continue;
+        ctx.save();
+        ctx.globalAlpha = 0.35;
+        ctx.beginPath();
+        ctx.rect(p.cx - p.shoulderW * 2, 0, p.shoulderW * 4, g.H);
+        ctx.clip();
+        cutout.draw(ctx, /** @type {any} */ (r));
+        ctx.restore();
+      }
+    }
+    return;
+  }
   if (camera && cutoutReady) cutout.draw(ctx, r);
   family.drawGuest(ctx, g.W, g.H);
+}
+
+// The skeletons over the kids: in a fort game, each in its fort (a watcher has no fort and stays where they are).
+function drawSkeletons() {
+  for (const p of g.players) {
+    const f = fortsOn() ? fortOf(/** @type {import('./forts.js').Fort[]} */ (g.forts), p) : null;
+    if (!f) {
+      drawSkeleton(ctx, p, g);
+      if (fortsOn() && p.present && p.excluded) {
+        drawPoseIcon(ctx, 'airplane', p.cx, p.px[0].y - 150 * g.u, 70 * g.u);
+        text(ctx, 'Arms out to join!', p.cx, p.px[0].y - 60 * g.u, 36 * g.u);
+      }
+      continue;
+    }
+    ctx.save();
+    applyFort(ctx, f, g.H);
+    drawSkeleton(ctx, p, g);
+    ctx.restore();
+  }
 }
 
 function skipCalibration() {
@@ -667,7 +718,7 @@ function render() {
   if (state === 'loading') return drawLoading(ctx, g, status);
 
   if (g.level && inLevel()) g.level.draw(g, ctx);
-  for (const p of g.players) drawSkeleton(ctx, p, g);
+  drawSkeletons();
   drawParticles(ctx, g);
 
   if (state === 'setup') drawSetup(ctx, g, setup, settings.mobile);

@@ -103,7 +103,7 @@ export function makeMine(level, n = COLS) {
     below[side] = brick('tnt', 1);
     for (const d of [c - 1, c + 1]) if (below[d]?.kind === 'metal') below[d] = dirt();
     puzzle = { r: r + 1, c };
-    rows[r + 1].prizeCol = c;
+    /** @type {any} */ (rows[r + 1]).prizeCol = c; // only puzzle rows have one
   }
   // one treasure chest, below the first row, in a plain brick that isn't the puzzle's prize
   const spots = [];

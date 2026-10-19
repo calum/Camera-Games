@@ -839,6 +839,11 @@ export class MouseTracker {
     px[26] = { x: x + 50 * u, y: y + 330 * u };
     px[27] = { x: x - 50 * u, y: y + 480 * u };
     px[28] = { x: x + 50 * u, y: y + 480 * u };
+    // wrists hang by the sides (the fingertips stay at the pointer, so touching works as before); Q lifts them
+    // over the head, so Q then letting go is an arm pump, the fort games' throw
+    const lift = this.keys.has('q') ? -230 * u : 90 * u;
+    px[15] = { x: x - 40 * u, y: y + lift };
+    px[16] = { x: x + 40 * u, y: y + lift };
     const p = this.player;
     p.px = px;
     p.seen = now;

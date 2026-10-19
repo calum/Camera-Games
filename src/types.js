@@ -77,6 +77,9 @@
  * @property {(x: number, y: number, color: string, n?: number) => void} burst     a confetti burst
  * @property {() => void} miss    a kid failed something (hit, splash, bonk): feeds auto-ease
  * @property {(msg: string) => void} endLevel  end the level early with a message (e.g. out of hearts)
+ * @property {import('./forts.js').Fort[]} [forts]  fort levels only: this frame's forts (read them with kit.js forts(g))
+ * @property {import('./forts.js').FortLayout} [fortLayout]  fort levels only: keeps the forts steady between frames
+ * @property {number} [fortsAt]   the g.now the forts were last updated
  */
 
 /**
@@ -103,6 +106,7 @@
  * @property {boolean} [hearts]   show the team's hearts in the HUD
  * @property {string | Scene} [backdrop]  scene to use: an existing scene id or your own Scene (default: the id)
  * @property {Record<string, { file: string, emoji?: string }>} [art]  art slots this level adds (see art.js)
+ * @property {boolean} [forts]    a fort game (docs/FORT-GAMES.md): every player is drawn in their own fort
  * @property {(g: Game) => void} start                 reset all level state (called before every play)
  * @property {(g: Game, dt: number) => void} update    advance by dt seconds
  * @property {(g: Game, ctx: CanvasRenderingContext2D) => void} draw   paint (players are drawn on top)
