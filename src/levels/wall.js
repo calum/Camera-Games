@@ -7,6 +7,7 @@
 import { EXTRA_SCENES } from '../backdrops-extra.js';
 import { sfx } from '../audio.js';
 import { text, drawPoseIcon } from '../draw.js';
+import { standX } from './kit.js';
 
 const WALL_TIME_START = 3.2; // seconds for the first wall to grow to full size
 const WALL_TIME_STEP = 0.12; // each wall is this much quicker than the last...
@@ -135,7 +136,8 @@ const wall = {
       const alpha = arrived ? Math.max(0, this.timer / FADE_OUT) : Math.min(1, this.t / FADE_IN);
       const w = g.W * s;
       const h = g.H * s;
-      const cx = g.W / 2;
+      // the hole is in front of where the kids can stand (the play space), and always fully on screen
+      const cx = Math.min(g.W - w / 4, Math.max(w / 4, standX(g, 0.5)));
       const cy = g.H / 2;
       ctx.save();
       // see-through as it gets close, so the kids can still see themselves while they pose

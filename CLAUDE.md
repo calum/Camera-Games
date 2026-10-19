@@ -123,7 +123,7 @@ Key ideas to preserve:
   where a body can be, `reach0..reach1` where hands can get to). **Levels place anything a kid must touch, catch
   or stand in with `reachX(g, f)` / `standX(g, f)` from `kit.js`, never `f * g.W`**; without a calibration they
   equal `f * g.W`. Things that sweep the whole screen (waves, logs, birds) don't need it. Mouse mode skips it;
-  `?nocal` and `?level=` skip it, SPACE/Esc/tap skip the rest (keeping the last `g.area`). `openGame` adds `?nocal` unless `{ calibrate: true }`.
+  `?nocal` and `?level=` skip it, SPACE/Esc/tap skip the rest (keeping the sides the kids already walked; a side nobody walked stays the whole way). `openGame` adds `?nocal` unless `{ calibrate: true }`.
 - **Debug recordings** (`?debug`: R saves, G adds screen video, `?replay` or a dropped file plays one back). Nothing
   is created until debug is on (`PoseTracker.onAnswer` stays null), video is never on by itself (it shows the
   kids), and nothing is uploaded. When Calum sends a recording, replay it, fix the bug, then add it to

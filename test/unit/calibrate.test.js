@@ -97,6 +97,33 @@ test('the play space is never tiny, unmeasured sides are open, and a skip keeps 
   assert.deepEqual(c.area, FULL_AREA);
 });
 
+test('a grown-up who skips once the kids have walked both ways keeps the space they walked', () => {
+  // the walk is coloured in on screen as the kids go, so a skip mustn't throw it away (it used to: every game
+  // then used the whole picture, and Dig down sent a grown-up out of their space)
+  const c = new Calibration();
+  let t = 0;
+  for (; c.phase === 'left'; t += 1 / 30) c.update([kid(1, walk(0.5, 0.3, t))], W, 1 / 30); // to the sofa
+  for (let s = 0; s < 1.5; s += 1 / 30, t += 1 / 30) c.update([kid(1, walk(0.3, 0.7, s, 0.3))], W, 1 / 30); // most of the way right
+  assert.equal(c.phase, 'right');
+  c.skip();
+  assert.deepEqual(c.sides, { left: true, right: true });
+  assert.ok(Math.abs(c.area.x0 - 0.3) < 0.01 && c.area.x1 > 0.6 && c.area.x1 < 0.75, JSON.stringify(c.area));
+});
+
+test('a side the kids walked out to counts even if they never stood still there', () => {
+  const c = new Calibration();
+  // creeping left so slowly it never settles: it gives up after a while, but they were out there
+  let t = 0;
+  for (; c.phase === 'left'; t += 1 / 30) c.update([kid(1, walk(0.5, 0, t, 0.025))], W, 1 / 30);
+  assert.ok(t >= CAL.giveUp - 0.1, `gave up after ${t.toFixed(1)} s`);
+  assert.equal(c.sides.left, true);
+  assert.ok(Math.abs(c.area.x0 - (0.5 - 0.025 * CAL.giveUp)) < 0.02, JSON.stringify(c.area));
+  // nobody walked at all on the right: it stays open
+  for (let t = 0; c.phase === 'right'; t += 1 / 30) c.update([], W, 1 / 30);
+  assert.equal(c.sides.right, false);
+  assert.equal(c.area.x1, 1);
+});
+
 test('it runs on every start unless ?nocal or ?level=', () => {
   assert.equal(shouldCalibrate(new URLSearchParams('')), true);
   assert.equal(shouldCalibrate(new URLSearchParams('mouse')), true);

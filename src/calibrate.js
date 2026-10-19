@@ -42,6 +42,7 @@ export class Calibration {
     this.handLo = Infinity; // explored hand range
     this.handHi = -Infinity;
     this.sides = { left: false, right: false }; // which sides were really measured
+    this.walked = { left: false, right: false }; // which sides the kids walked out towards (even if they never settled)
     /** @type {Map<number, { lo: number, hi: number, color: string }>} each kid's own explored range, to colour it in */
     this.ranges = new Map();
     this.finished = false;
@@ -88,12 +89,14 @@ export class Calibration {
     const there = seen && Math.abs(now - edge) < CAL.near;
     this.calm = grew || !there ? 0 : this.calm + dt;
     const walked = seen && this.start !== null && Math.abs(now - this.start) >= CAL.moved;
+    if (walked) this.walked[this.phase] = true;
     const atEdge = there && (left ? edge <= CAL.edge : edge >= 1 - CAL.edge);
     // a kid who can't go any further that way (they started against the sofa) is believed after a few seconds
     const settled = this.t >= CAL.minPhase && (atEdge || (this.calm >= CAL.settle && (walked || this.t >= CAL.stuck)));
     if (settled || this.t >= CAL.giveUp) {
-      // a side counts as measured only if somebody was really out there; otherwise it stays open (the full width)
-      if (settled) this.sides[this.phase] = true;
+      // a side counts as measured if somebody was really out there, or at least walked out that way (what they
+      // walked is what the screen coloured in, so it is what the games must keep to); otherwise it stays open
+      if (settled || this.walked[this.phase]) this.sides[this.phase] = true;
       this.next(left ? 'right' : 'done');
     }
   }
@@ -107,8 +110,10 @@ export class Calibration {
     this.mark = phase === 'left' ? Infinity : phase === 'right' ? this.hi : 0;
   }
 
-  // A grown-up skipped it: keep what was measured, the rest stays the whole width.
+  // A grown-up skipped it: keep what was measured or walked, the rest stays the whole width. (A skip once the kids
+  // had walked both ways used to throw the walk away, so every game used the whole picture.)
   skip() {
+    if (this.phase !== 'done' && this.walked[this.phase]) this.sides[this.phase] = true;
     this.finished = true;
   }
 
