@@ -4,10 +4,11 @@ import { LEVELS } from './levels/index.js';
 import { sfx, unlock, music } from './audio.js';
 import { moodFor, musicOn, saveMusicOn } from './music.js';
 import { Ease } from './ease.js';
-import { loadArt, drawArt, registerArt } from './art.js';
-import { text, drawSkeleton, drawHeart, popScale, roundRectPath } from './draw.js';
+import { loadArt, registerArt } from './art.js';
+import { text, drawSkeleton } from './draw.js';
 import { Lobby, lateJoin } from './lobby.js';
-import { Carousel, pickerChoices, carouselLayout, carouselCardAt, surprisePick, drawPicker } from './picker.js';
+import { Carousel, pickerChoices, carouselLayout, carouselCardAt, surprisePick } from './picker.js';
+import { drawParticles, drawHud, drawSetup, drawCalibration, drawReconnecting, drawLoading, drawMenu, drawPick, drawIntro, drawOutro, drawToast, drawDebugPanel } from './screens.js';
 import { Cutout } from './cutout.js';
 import { Backdrops } from './backdrops.js';
 import { loadSavedCamera } from './camera.js';
@@ -15,11 +16,11 @@ import { defaultSettings } from './device.js';
 import { createControls } from './controls.js';
 import { Family } from './family.js';
 import { SIGNAL_URL } from './online-config.js';
-import { DebugRecorder } from './debug-record.js';
-import { parseRecording, recordingStart } from './recording.js';
+import { DebugSession } from './debug-record.js';
+import { recordingStart } from './recording.js';
 import { ReplayTracker } from './replay.js';
 import { Calibration, shouldCalibrate } from './calibrate.js';
-import { SetupCheck, shouldRunSetup, saveSetupDone, frameBrightness, judgeCamera, judgeLight, judgeDistance, judgeSpeed, judgeGraphics, softwareRendering, accelerationHelp } from './setup-check.js';
+import { SetupCheck, shouldRunSetup, saveSetupDone, frameBrightness, judgeCamera, judgeLight, judgeDistance, judgeSpeed, judgeGraphics, softwareRendering } from './setup-check.js';
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
 const ctx = canvas.getContext('2d');
@@ -357,11 +358,11 @@ const actions = {
     toast(family.active ? `Family room ${family.code}: ${family.role === 'host' ? 'ask them to open ' + family.link : 'looking for the host'}` : 'Family room closed', 6);
   },
   save() {
-    saveRecording();
+    debug.save();
   },
   video() {
     if (!g.debug) return;
-    toast(debugRecorder().toggleVideo() ? 'Recording the screen too (kept on this computer, last 30-60 s)' : 'Screen video off', 4);
+    toast(debug.recorder().toggleVideo() ? 'Recording the screen too (kept on this computer, last 30-60 s)' : 'Screen video off', 4);
   },
 };
 
@@ -388,7 +389,7 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'k') g.skeleton = { thin: 'bold', bold: 'off', off: 'thin' }[g.skeleton];
   else if (k === 'r' && g.debug) actions.save();
   else if (k === 'g' && g.debug) actions.video();
-  else if (k === 'l' && (g.debug || replay)) chooseRecording();
+  else if (k === 'l' && (g.debug || replay)) debug.choose();
   else if (k === 'm' && state !== 'loading') {
     if (tracker === mouse) {
       if (pose) {
@@ -614,165 +615,10 @@ function drawBackground() {
   if (camera && cutoutReady) cutout.draw(ctx, r);
   family.drawGuest(ctx, g.W, g.H);
 }
-function drawParticles() {
-  for (const q of g.particles) {
-    const a = Math.max(0, q.life / q.max);
-    ctx.globalAlpha = a;
-    if (q.txt) {
-      // pops in with a bounce, stays solid, then fades over its last 40%
-      ctx.globalAlpha = Math.min(1, a / 0.4);
-      text(ctx, q.txt, q.x, q.y, q.size * popScale(q.max - q.life), { color: q.color });
-    } else if (q.ring) {
-      ctx.lineWidth = 10 * g.u * a;
-      ctx.strokeStyle = q.color;
-      ctx.beginPath();
-      ctx.arc(q.x, q.y, q.size * (1.15 - a * 0.85), 0, Math.PI * 2);
-      ctx.stroke();
-    } else if (q.paper !== undefined) {
-      ctx.globalAlpha = Math.min(1, a * 3);
-      ctx.fillStyle = q.color;
-      ctx.save();
-      ctx.translate(q.x + Math.sin(q.paper) * 20 * g.u, q.y);
-      ctx.rotate(q.paper * 0.7);
-      ctx.fillRect(-q.size / 2, -q.size * 0.3 * Math.abs(Math.cos(q.paper)) - 1, q.size, q.size * 0.6 * Math.abs(Math.cos(q.paper)) + 2);
-      ctx.restore();
-    } else {
-      ctx.fillStyle = q.color;
-      ctx.beginPath();
-      ctx.arc(q.x, q.y, q.size * a + 1, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-  ctx.globalAlpha = 1;
-}
-
-function drawHud() {
-  const u = g.u;
-  const L = g.level;
-  text(ctx, L.title, 40 * u, 55 * u, 48 * u, { align: 'left' });
-  // timer bar
-  const bw = g.W * 0.3;
-  const bx = (g.W - bw) / 2;
-  const left = Math.max(0, L.duration - levelT);
-  const ending = left < 5 && state === 'play'; // the last 5 s: the bar goes orange and throbs
-  const bh = 22 * u * (ending ? 1 + 0.15 * Math.max(0, Math.sin(g.now * 10)) : 1);
-  roundRect(bx - 4 * u, 39 * u - bh / 2 - 4 * u, bw + 8 * u, bh + 8 * u, 'rgba(0,0,0,0.45)');
-  if (left > 0) roundRect(bx, 39 * u - bh / 2, Math.max(bh, bw * (left / L.duration)), bh, ending ? '#ffa23d' : '#fff');
-  // team score
-  drawArt(ctx, 'star', g.W - 220 * u, 55 * u, 64 * u);
-  text(ctx, String(g.team.score), g.W - 40 * u, 55 * u, 64 * u, { align: 'right', color: '#ffe14d' });
-  if (L.hearts) {
-    for (let i = 0; i < g.team.maxHearts; i++) drawHeart(ctx, g.W - (60 + i * 62) * u, 130 * u, 28 * u, i < g.team.hearts);
-  }
-}
-
-function roundRect(x, y, w, h, color, r = h / 2) {
-  ctx.fillStyle = color;
-  roundRectPath(ctx, x, y, w, h, r);
-  ctx.fill();
-}
-
-function drawPlayerCount() {
-  const n = g.activePlayers().length;
-  const word = state === 'menu' ? 'spotted' : 'playing';
-  text(ctx, n ? `${n} player${n > 1 ? 's' : ''} ${word}!` : 'Step into view...', g.W / 2, g.H - 60 * g.u, 54 * g.u);
-}
-
-// A row per check: a tick, a cross or dots, and what to do about it. Kept to the top half so the kids stay visible.
-function drawSetup() {
-  const u = g.u;
-  ctx.fillStyle = 'rgba(8,12,30,0.35)';
-  ctx.fillRect(0, 0, g.W, g.H);
-  text(ctx, setup.passed ? 'All set! Let\'s play!' : 'Quick setup check', g.W / 2, g.H * 0.08, 80 * u, { color: setup.passed ? '#7dff6b' : '#ffe14d' });
-  const names = { camera: 'Camera', light: 'Light', distance: 'Distance', speed: 'Speed', graphics: 'Graphics' };
-  const w = Math.min(g.W - 80 * u, 1300 * u);
-  const x0 = (g.W - w) / 2;
-  setup.items.forEach((c, i) => {
-    const y = g.H * 0.17 + i * 74 * u;
-    ctx.fillStyle = 'rgba(8,12,30,0.65)';
-    ctx.fillRect(x0, y - 32 * u, w, 64 * u);
-    const mark = c.ok === true ? '✓' : c.ok === false ? '✗' : '…';
-    const color = c.ok === true ? '#7dff6b' : c.ok === false ? '#ff8a80' : '#cfd6e6';
-    text(ctx, mark, x0 + 40 * u, y, 44 * u, { color });
-    text(ctx, names[c.name] ?? c.name, x0 + 80 * u, y, 36 * u, { align: 'left', color });
-    text(ctx, c.text, x0 + 300 * u, y, 32 * u, { align: 'left' });
-  });
-  if (setup.items.some((c) => c.name === 'graphics' && c.ok === false)) {
-    text(ctx, accelerationHelp(navigator.userAgent), g.W / 2, g.H * 0.17 + setup.items.length * 74 * u, 30 * u, { color: '#ffe14d' });
-  }
-  const how = settings.mobile ? 'tap the screen' : 'press SPACE or tap';
-  const foot = setup.overdue ? `Fix what is marked ✗ and it will carry on by itself, or ${how} to play anyway` : `Grown-ups: ${how} to skip`;
-  text(ctx, foot, g.W / 2, g.H - 50 * u, 32 * u, { color: setup.overdue ? '#ffe14d' : '#cfd6e6' });
-}
 
 function skipCalibration() {
   calibration.skip();
   calibrationDone();
-}
-
-// The play-space check: a big arrow says which way to walk, and a green floor grows under the kids as they explore.
-// The words stay in the top band, like every screen, so the kids can watch themselves.
-function drawCalibration() {
-  const u = g.u;
-  const c = calibration;
-  ctx.fillStyle = 'rgba(8,12,30,0.25)';
-  ctx.fillRect(0, 0, g.W, g.H);
-  // the ground found so far: a green strip along the bottom, from the furthest left to the furthest right
-  if (c.lo <= c.hi) {
-    const a = c.phase === 'done' ? c.area : null;
-    const x0 = (a ? a.x0 : c.lo) * g.W;
-    const x1 = (a ? a.x1 : c.hi) * g.W;
-    const y = g.H - 90 * u;
-    ctx.fillStyle = 'rgba(77,255,136,0.35)';
-    ctx.fillRect(x0 - 40 * u, y, x1 - x0 + 80 * u, 70 * u);
-    ctx.fillStyle = '#4dff88';
-    ctx.fillRect(x0 - 40 * u, y, x1 - x0 + 80 * u, 8 * u);
-    for (const x of [x0 - 40 * u, x1 + 40 * u]) text(ctx, '⭐', x, y + 30 * u, 60 * u);
-  }
-  if (c.phase === 'done') {
-    text(ctx, 'This is your play space!', g.W / 2, g.H * 0.08, 84 * u, { color: '#7dff6b' });
-    text(ctx, 'The games will stay inside it.', g.W / 2, g.H * 0.16, 44 * u);
-    return;
-  }
-  const left = c.phase === 'left';
-  text(ctx, 'Show me your play space!', g.W / 2, g.H * 0.07, 72 * u, { color: '#ffe14d' });
-  text(ctx, left ? 'Walk this way as far as you can go!' : 'Now walk the other way, as far as you can!', g.W / 2, g.H * 0.15, 48 * u);
-  // a big bouncing arrow on that side, and a ring that fills once they have stopped at the furthest spot
-  const dir = left ? -1 : 1;
-  const x = g.W / 2 + dir * (g.W * 0.36 + Math.sin(g.now * 6) * 25 * u);
-  const y = g.H * 0.3;
-  text(ctx, left ? '⬅' : '➡', x, y, 150 * u, { color: '#ffe14d' });
-  if (c.progress > 0) {
-    ctx.lineWidth = 14 * u;
-    ctx.strokeStyle = '#7dff6b';
-    ctx.beginPath();
-    ctx.arc(x, y, 100 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * c.progress);
-    ctx.stroke();
-  }
-  const how = settings.mobile ? 'tap the screen' : 'press SPACE or tap';
-  text(ctx, `Stop where a wall or the sofa is in the way.   Grown-ups: ${how} to skip`, g.W / 2, g.H * 0.21, 28 * u, { color: '#cfd6e6' });
-}
-
-// The friendly screen while the camera or the tracking is put right (see PoseTracker._heal). After a few seconds
-// it suggests what a grown-up can check, in case it can't fix itself.
-function drawReconnecting() {
-  const u = g.u;
-  const what = reconnecting();
-  const secs = g.now - pose.reconnectingSince;
-  ctx.fillStyle = 'rgba(8,12,30,0.7)';
-  ctx.fillRect(0, 0, g.W, g.H);
-  ctx.lineWidth = 16 * u;
-  ctx.strokeStyle = '#7dff6b';
-  ctx.beginPath();
-  const a = g.now * 5;
-  ctx.arc(g.W / 2, g.H * 0.36, 60 * u, a, a + Math.PI * 1.3);
-  ctx.stroke();
-  text(ctx, what === 'camera' ? 'Reconnecting the camera...' : 'Waking up the pose detector...', g.W / 2, g.H * 0.56, 72 * u, { color: '#ffe14d' });
-  text(ctx, 'Hold on, the game will carry on by itself.', g.W / 2, g.H * 0.66, 44 * u);
-  if (secs > 6) {
-    const hint = what === 'camera' ? 'Grown-ups: check the camera is plugged in and no other app is using it.' : 'Grown-ups: closing other tabs and apps can help.';
-    text(ctx, hint, g.W / 2, g.H * 0.76, 32 * u, { color: '#cfd6e6' });
-  }
 }
 
 function render() {
@@ -780,116 +626,43 @@ function render() {
   if (family.guestView && family.drawHostPicture(ctx, g.W, g.H)) return; // the host's picture already carries the room label
   drawBackground();
 
-  if (state === 'loading') {
-    text(ctx, 'Kids Camera Game', g.W / 2, g.H * 0.4, 110 * u);
-    text(ctx, status, g.W / 2, g.H * 0.55, 48 * u);
-    return;
-  }
+  if (state === 'loading') return drawLoading(ctx, g, status);
 
   if (g.level && inLevel()) g.level.draw(g, ctx);
   for (const p of g.players) drawSkeleton(ctx, p, g);
-  drawParticles();
+  drawParticles(ctx, g);
 
-  if (state === 'setup') drawSetup();
-  else if (state === 'calibrate') drawCalibration();
+  if (state === 'setup') drawSetup(ctx, g, setup, settings.mobile);
+  else if (state === 'calibrate') drawCalibration(ctx, g, calibration, settings.mobile);
   else if (state === 'menu') {
-    ctx.fillStyle = 'rgba(8,12,30,0.3)';
-    ctx.fillRect(0, 0, g.W, g.H);
-    // All the words live in a band at the top so they never cover the kids.
-    text(ctx, 'Kids Camera Game', g.W / 2, g.H * 0.07, 96 * u, { color: '#ffe14d' });
-    text(ctx, 'Arms out like an airplane for 3 seconds to JOIN!', g.W / 2, g.H * 0.15, 44 * u);
-    text(ctx, "Stand back so the camera sees all of you. Anyone who doesn't join sits this one out.", g.W / 2, g.H * 0.2, 26 * u);
-    // Who has joined: a green countdown ring over each airplane kid, a nudge over the others.
-    for (const p of g.activePlayers()) {
-      const x = p.px[0].x;
-      const y = Math.max(g.H * 0.3, p.px[0].y - Math.max(120 * u, p.shoulderW * 1.0));
-      if (lobby.isJoined(p.id)) {
-        ctx.lineWidth = 14 * u;
-        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-        ctx.beginPath();
-        ctx.arc(x, y, 52 * u, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.strokeStyle = '#7dff6b';
-        ctx.beginPath();
-        ctx.arc(x, y, 52 * u, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * lobby.progress);
-        ctx.stroke();
-        text(ctx, String(lobby.secondsLeft), x, y, 60 * u, { color: '#7dff6b' });
-        text(ctx, '✓ IN', x, y - 85 * u, 36 * u, { color: '#7dff6b' });
-      } else {
-        text(ctx, 'arms out to join', x, y, 28 * u, { color: '#cfd6e6' });
-      }
-    }
-    if (lobby.joined.length) {
-      const n = lobby.joined.length;
-      text(ctx, `Starting with ${n} player${n > 1 ? 's' : ''}... keep your arms out!`, g.W / 2, g.H * 0.86, 46 * u, { color: '#7dff6b' });
-    }
-    drawPlayerCount();
-    text(ctx, settings.mobile ? 'grown-ups: tap the screen for the buttons (Start, Camera, Full screen)' : 'grown-ups: SPACE starts with everyone, or tap or move the mouse for buttons', g.W - 30 * u, g.H - 30 * u, 24 * u, { align: 'right' });
-    if (pose && tracker === pose && pose.isPortrait) text(ctx, 'The camera picture is upright (portrait). Turn the phone sideways for a much wider view.', g.W / 2, g.H * 0.26, 28 * u, { color: '#ffe14d' });
-    if (g.notice) text(ctx, g.notice, g.W / 2, g.H * 0.26, 28 * u, { color: '#ffb3b3' });
-    // the setup check only runs once, but acceleration can be switched off later: say so every time
-    if (pose && tracker === pose && softwareRendering(gpuName(), pose.delegate)) {
-      text(ctx, `The game may lag: graphics acceleration is off. ${accelerationHelp(navigator.userAgent)}`, g.W / 2, g.H * 0.3, 26 * u, { color: '#ffe14d' });
-    }
-    if (tracker === mouse) text(ctx, 'Mouse mode: move = body & hands, click = jump, Q/W/E = poses', g.W / 2, g.H * 0.8, 28 * u);
+    const camera = pose && tracker === pose;
+    drawMenu(ctx, g, {
+      lobby,
+      mobile: settings.mobile,
+      portrait: camera && pose.isPortrait,
+      slowGraphics: camera && softwareRendering(gpuName(), pose.delegate),
+      mouseMode: tracker === mouse,
+    });
   } else if (state === 'pick') {
-    ctx.fillStyle = 'rgba(8,12,30,0.3)';
-    ctx.fillRect(0, 0, g.W, g.H);
-    text(ctx, 'Pick a game!', g.W / 2, g.H * 0.045, 60 * u, { color: '#ffe14d' });
-    drawPicker(ctx, g, choices, carousel, pickCards(), lastStep);
+    drawPick(ctx, g, choices, carousel, pickCards(), lastStep);
   } else if (state === 'intro') {
-    ctx.fillStyle = 'rgba(8,12,30,0.4)';
-    ctx.fillRect(0, 0, g.W, g.H);
-    // the level's colour as a soft band behind the words, its picture beside the level number
-    ctx.globalAlpha = 0.35;
-    roundRect(g.W * 0.08, g.H * 0.15, g.W * 0.84, g.H * 0.42, g.level.color, 60 * u);
-    ctx.globalAlpha = 1;
-    text(ctx, `${g.level.icon ?? ''}  Level ${levelIdx + 1}`, g.W / 2, g.H * 0.22, 70 * u, { color: '#ffe14d' });
-    text(ctx, g.level.title, g.W / 2, g.H * 0.36, 130 * u * popScale(stateT));
-    text(ctx, g.level.hint, g.W / 2, g.H * 0.5, 50 * u);
-    // 3, 2, 1: each number lands with a bounce on its own second
-    const n = Math.max(1, Math.ceil(3 - stateT));
-    text(ctx, String(n), g.W / 2, g.H * 0.7, 200 * u * popScale(stateT - (3 - n)), { color: '#7dff6b' });
-    drawPlayerCount();
+    drawIntro(ctx, g, levelIdx, stateT);
   } else if (state === 'play') {
-    drawHud();
+    drawHud(ctx, g, levelT, true);
   } else if (state === 'outro') {
-    drawHud();
-    ctx.fillStyle = 'rgba(8,12,30,0.4)';
-    ctx.fillRect(0, 0, g.W, g.H);
-    text(ctx, outroMsg, g.W / 2, g.H * 0.3, 100 * u, { color: '#ffe14d' });
-    text(ctx, `Team score: ${g.team.score}`, g.W / 2, g.H * 0.45, 70 * u);
-    // each kid's stars, best first, side by side
-    const ranked = g.players.filter((p) => !p.excluded).sort((a, b) => b.score - a.score);
-    ranked.forEach((p, i) => text(ctx, `${i === 0 ? '👑 ' : ''}★ ${p.score}`, g.W * ((i + 1) / (ranked.length + 1)), g.H * 0.62, 64 * u, { color: p.color }));
+    drawHud(ctx, g, levelT, false);
+    drawOutro(ctx, g, outroMsg);
   }
 
-  if (replay && tracker === replay) drawReplay();
-  if (reconnecting()) drawReconnecting();
+  if (replay && tracker === replay) debug.drawReplay(ctx, replay);
+  if (reconnecting()) drawReconnecting(ctx, g, reconnecting(), g.now - pose.reconnectingSince);
   if (family.active) text(ctx, family.label, 30 * u, g.H - 30 * u, 26 * u, { align: 'left' });
 
-  if (g.toast && g.now < g.toast.until) {
-    ctx.font = `800 ${36 * u}px "Trebuchet MS", system-ui, sans-serif`;
-    const w = ctx.measureText(g.toast.text).width + 60 * u;
-    ctx.fillStyle = 'rgba(8,12,30,0.75)';
-    ctx.fillRect((g.W - w) / 2, 80 * u, w, 64 * u);
-    text(ctx, g.toast.text, g.W / 2, 112 * u, 36 * u);
-  }
+  drawToast(ctx, g);
 
   if (g.debug) {
-    // top left, on a solid panel and drawn last, so the game's own text and the buttons can't cover it
-    const lines = [...debugLines(), recordingLine(), `keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  P play space  1-${LEVELS.length} level  Esc menu`];
-    const size = 24 * u;
-    ctx.font = `600 ${size}px "Trebuchet MS", system-ui, sans-serif`;
-    const w = Math.max(...lines.map((s) => ctx.measureText(s).width)) + 30 * u;
-    ctx.fillStyle = 'rgba(0,0,0,0.8)';
-    ctx.fillRect(10 * u, 10 * u, w, lines.length * size * 1.3 + 20 * u);
-    lines.forEach((s, i) => text(ctx, s, 25 * u, 20 * u + (i + 0.5) * size * 1.3, size, { align: 'left', stroke: 'transparent', weight: 600 }));
-    // what the game thinks each kid is doing (handy when a pose won't register)
-    for (const p of g.activePlayers()) {
-      const on = Object.entries(p.pose).filter(([, v]) => v).map(([k]) => k).join(' + ') || 'no pose';
-      text(ctx, `on ${on}   (torso/shoulders ${(p.torso / p.shoulderW).toFixed(1)})`, p.px[0].x, p.px[0].y - 120 * u, 24 * u, { color: p.color });
-    }
+    const lines = [...debugLines(), debug.line, `keys: D debug  B cut-out/camera  K skeleton  C camera  F fullscreen  M mouse  N next  P play space  1-${LEVELS.length} level  Esc menu`];
+    drawDebugPanel(ctx, g, lines);
   }
 }
 
@@ -934,92 +707,32 @@ function watchDebug(now) {
   if (g.debug) console.log(`[kids-camera-games debug] ${debugLines().join(' | ')}`);
 }
 
-// ------------------------------------------------------------------ recordings (debug mode, see recording.js)
-// While debug is on, the last minute is kept: every tracking answer, a few samples a second of how things ran,
-// and what happened. R saves it as a file to send back with a problem; G adds a video of the screen (it shows the
-// kids, so only when asked). ?replay (or dropping a file on the page) plays one back through the real game.
-// Nothing here runs, or costs anything, until debug is turned on.
-/** @type {DebugRecorder | null} */
-let rec = null;
-let sampleAt = 0;
+// ------------------------------------------------------------------ recordings (debug mode, see debug-record.js)
+// Keeping and saving the last minute (R), screen video (G) and choosing a recording (L or a dropped file) live in
+// DebugSession. Playing a recording drives the state machine, so that part stays here.
 let replayAdmitUntil = 0;
-let replayEnded = false;
-
-function debugRecorder() {
-  if (rec) return rec;
-  rec = new DebugRecorder(canvas);
-  // warnings (recovery, slow drawing) go in the recording too
-  for (const level of /** @type {const} */ (['warn', 'error'])) {
-    const orig = console[level];
-    console[level] = (...a) => {
-      note(level, { text: a.map((x) => (x instanceof Error ? x.message : String(x))).join(' ') });
-      orig.apply(console, a);
-    };
-  }
-  note('state', { state, level: g.level?.id ?? null });
-  return rec;
-}
-
-/** @param {string} type  @param {Record<string, any>} [data] */
-function note(type, data) {
-  if (g.debug && rec) rec.data.event(g.now, type, data);
-}
-
-const round1 = (/** @type {number} */ n) => Math.round(n * 10) / 10;
-function recordSample(now) {
-  debugRecorder();
-  if (pose && !pose.onAnswer) pose.onAnswer = (res, t) => g.debug && rec.data.frame(t, res.landmarks, res.looks, pose.video.videoWidth, pose.video.videoHeight);
-  if (now < sampleAt) return;
-  sampleAt = now + 0.25;
-  const cam = pose && tracker === pose;
-  rec.data.sample(now, {
+const debug = new DebugSession({
+  canvas,
+  g,
+  view: () => ({
     state,
-    level: g.level?.id ?? null,
-    levelT: round1(levelT),
+    levelT,
     fps: Math.round(1 / dtSmooth),
-    detectMs: round1(tracker?.detectMs ?? 0),
-    modelMs: cam ? round1(pose.modelMs) : null,
-    quality: cam ? pose.quality.name : null,
-    tracking: `${tracker?.delegate}${cam ? (pose.useWorker ? ' worker' : ' main') : ''}`,
-    cameraFps: cam ? round1(pose.cameraFps) : null,
+    tracker,
+    pose,
+    camera: !!pose && tracker === pose,
     reconnecting: reconnecting(),
-    diff: Math.round(g.diff * 100) / 100,
-    score: g.team.score,
-    hearts: g.team.hearts,
-    view: g.view,
-    fx: g.fx,
     cutout: g.view === 'cutout' && cutoutReady ? Math.round(cutout.stats.coverage * 100) : null,
-    players: g.players.map((p) => ({ id: p.id, x: Math.round(p.cx), out: !!p.excluded, pose: Object.keys(p.pose ?? {}).filter((k) => p.pose[k]).join('+') })),
-  });
-}
-
-async function saveRecording() {
-  if (!g.debug) return;
-  const r = debugRecorder();
-  const secs = Math.round(r.data.span);
-  try {
-    const names = await r.save({
-      saved: new Date().toISOString(),
-      browser: navigator.userAgent,
-      gpu: gpuName(),
-      screen: [g.W, g.H],
-      url: location.search,
-      state,
-      level: g.level?.id ?? null,
-      camera: pose ? { label: pose.cameraLabel, size: [pose.video.videoWidth, pose.video.videoHeight], mode: pose.mode } : null,
-      debug: debugLines(),
-    });
-    if (names.length) toast(`Saved the last ${secs} s: ${names.join(', ')} (in Downloads)`, 6);
-  } catch (e) {
-    console.warn('could not save the recording', e);
-    toast(`Could not save: ${e.message || e}`, 5);
-  }
-}
-
-function recordingLine() {
-  if (!rec) return 'recording: starting';
-  return `recording the last ${Math.round(rec.data.span)} s${rec.videoOn ? ' + screen video' : ''}   R save   G video ${rec.videoOn ? 'off' : 'on'}   L load a recording`;
-}
+    gpu: gpuName(),
+    get lines() {
+      return debugLines(); // only built when a file is saved
+    },
+    replaying: !!replay,
+  }),
+  toast,
+  play: loadRecording,
+});
+const note = debug.note;
 
 /** @param {import('./recording.js').Recording | null} recording */
 function useReplay(recording) {
@@ -1031,7 +744,7 @@ function useReplay(recording) {
   replay = new ReplayTracker(recording ?? { kind: '', version: 1, meta: {}, frames: [], samples: [], events: [] });
   tracker = replay;
   g.players = [];
-  replayEnded = false;
+  debug.replayEnded = false;
   resize();
 }
 
@@ -1053,41 +766,6 @@ function loadRecording(recording) {
   } else if (start.state === 'pick') toPick();
   else toMenu();
   toast(`Replaying ${recording.frames.length ? Math.round(recording.frames.at(-1).t - recording.frames[0].t) : 0} s${start.level ? ` from ${start.level}` : ''}`, 3);
-}
-
-function chooseRecording() {
-  const input = document.createElement('input');
-  input.type = 'file';
-  input.accept = '.json,application/json';
-  input.onchange = () => input.files[0] && openRecordingFile(input.files[0]);
-  input.click();
-}
-
-/** @param {File} file */
-async function openRecordingFile(file) {
-  try {
-    loadRecording(parseRecording(await file.text()));
-  } catch (e) {
-    toast(e.message || String(e), 5);
-  }
-}
-
-window.addEventListener('dragover', (e) => (g.debug || replay) && e.preventDefault());
-window.addEventListener('drop', (e) => {
-  if (!(g.debug || replay)) return;
-  e.preventDefault();
-  const file = e.dataTransfer?.files[0];
-  if (file) openRecordingFile(file);
-});
-
-function drawReplay() {
-  const u = g.u;
-  if (replay.done && replay.rec.frames.length && !replayEnded) {
-    replayEnded = true;
-    toast('Replay finished. Press L to load another', 5);
-  }
-  const what = replay.rec.frames.length ? `Replay ${Math.round(replay.progress * 100)}%` : 'Replay: no recording loaded';
-  text(ctx, what, 30 * u, g.H - 70 * u, 30 * u, { align: 'left', color: '#ffe14d' });
 }
 
 // The music follows the screen (music.js moodFor). On a family call it goes quieter, and further down while
@@ -1116,7 +794,7 @@ function frame(ts) {
   update(dt);
   watchFrameRate(dt);
   watchDebug(now);
-  if (g.debug) recordSample(now);
+  if (g.debug) debug.sample(now);
   playMusic();
   render();
 }
@@ -1125,4 +803,4 @@ requestAnimationFrame(frame);
 boot();
 
 // handy for debugging / automated tests
-/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get carousel() { return carousel; }, get setup() { return setup; }, get calibration() { return calibration; }, pickCards, family, get recorder() { return rec; }, get replay() { return replay; }, loadRecording, music };
+/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get carousel() { return carousel; }, get setup() { return setup; }, get calibration() { return calibration; }, pickCards, family, get recorder() { return debug.rec; }, get replay() { return replay; }, loadRecording, music };

@@ -217,9 +217,10 @@ and the roadmap, and [`CLAUDE.md`](CLAUDE.md) for notes aimed at AI coding assis
 ```
 index.html, server.mjs, start.bat       the page, a tiny dependency-free static server, a Windows launcher
 sw.js, manifest.webmanifest, icons/     offline copy and "install as an app" for the hosted site
-src/main.js                             game loop, screens, HUD, keys
+src/main.js                             game loop, state machine, keys
+src/screens.js                          the screens and the HUD drawn over the game
 src/recording.js  replay.js             debug recordings (the last minute of play) and playing them back
-src/debug-record.js                     saving a recording as a download, optional screen video
+src/debug-record.js                     debug recordings: keeping, saving and loading them, optional screen video
 src/picker.js                           the level picker carousel
 src/setup-check.js                      the first-launch setup check (camera, light, distance, speed, GPU)
 src/calibrate.js                        the play space: where the kids can really go (walls, sofas), measured each time a group joins

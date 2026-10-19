@@ -43,7 +43,7 @@ separately and the game design carries over unchanged.
 ## Architecture
 
 ```
-index.html -> src/main.js          game loop, state machine, HUD, screens, keys
+index.html -> src/main.js          game loop, state machine, keys; screens.js draws the screens and HUD
                  |-- tracker.js    PoseTracker (camera + quality ladder + self-healing) / MouseTracker
                  |     |-- pose-worker.js  MediaPipe in a Web Worker (main-thread fallback in tracker.js)
                  |     |-- people.js, look.js  who is who
