@@ -64,6 +64,6 @@ test('no source file contains mangled UTF-8 (mojibake)', () => {
 test('the on-screen symbols are intact', () => {
   const levels = fs.readFileSync(path.join(root, 'src/levels/jump.js'), 'utf8');
   assert.ok(levels.includes('✓ NICE JUMP!') && levels.includes('✗ SPLASH!') && levels.includes('→'));
-  const main = fs.readFileSync(path.join(root, 'src/main.js'), 'utf8');
-  assert.ok(main.includes('✓ IN') && main.includes('★') && main.includes('\u{1F451}'));
+  const screens = fs.readFileSync(path.join(root, 'src/screens.js'), 'utf8');
+  assert.ok(screens.includes('✓ IN') && screens.includes('★') && screens.includes('\u{1F451}'));
 });

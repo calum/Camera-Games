@@ -28,7 +28,8 @@ or screens. No camera is needed for either: the e2e tests feed a photo through a
 ## Architecture
 
 ```
-src/main.js        game loop, state machine (loading > (setup) > menu > calibrate > pick > intro > play > outro > pick ...), HUD, keys + actions
+src/main.js        game loop, state machine (loading > (setup) > menu > calibrate > pick > intro > play > outro > pick ...), keys + actions
+src/screens.js     drawing only: join screen, setup check, play-space walk, picker, intro, HUD, outro, toasts, debug panel
 src/types.js       JSDoc typedefs: Player, Game, Level, Scene. Import with /** @import { Player } from './types.js' */
 src/tracker.js     PoseTracker (camera + engine + quality ladder) and MouseTracker; computeFeatures() -> a "player"
 src/pose-worker.js CLASSIC Web Worker running MediaPipe (it needs importScripts); returns landmarks, mask, looks
@@ -61,7 +62,7 @@ src/calibrate.js   pure: the play space. Kids walk left then right as far as the
 src/health.js      pure: self-healing watchdog. Spots a lost camera or a hung tracker; tab sleep is not a fault
 src/recording.js   pure: debug recordings. Rolling last minute of tracking answers, samples and events; file format
 src/replay.js      ReplayTracker: plays a recording through ingestLandmarks (the live path); playRecording for tests
-src/debug-record.js saves a recording as a download; optional screen video (opt-in, G) in 30 s WebM pieces
+src/debug-record.js DebugSession (keeps the last minute, R saves it, L/drop loads one) + screen video (opt-in, G) in 30 s WebM pieces
 ```
 
 Key ideas to preserve:
