@@ -786,7 +786,7 @@ test('AUTO-START (real camera): a kid holding their arms out starts the game by 
   }
 });
 
-test('PLAY SPACE (real camera): after joining, the kids show their play space before the picker; P redoes it, Space skips it', { skip }, async () => {
+test('PLAY SPACE (real camera): after joining, the kids show their play space before the picker; P redoes it, Space skips it, a new group from the menu walks again', { skip }, async () => {
   const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
   try {
     const { page, problems } = await openGame(browser, url + '?model=full', { calibrate: true });
@@ -806,6 +806,14 @@ test('PLAY SPACE (real camera): after joining, the kids show their play space be
     await waitForState(page, 'calibrate', 3000);
     await page.keyboard.press('Space');
     await waitForState(page, 'pick', 3000);
+    // back to the join screen and a new group starts: they show the game their own play space
+    await page.keyboard.press('Escape');
+    await waitForState(page, 'menu', 3000);
+    await page.keyboard.press('Space');
+    await waitForState(page, 'calibrate', 3000);
+    await page.keyboard.press('Space'); // skipping keeps the space measured before
+    await waitForState(page, 'pick', 3000);
+    assert.ok(await page.evaluate(() => window.__game.g.area), 'a skipped walk keeps the last play space');
     assert.deepEqual(problems, []);
   } finally {
     await browser.close();

@@ -124,8 +124,10 @@ const family = new Family({ canvas, search: location.search, origin: location.or
 let outroMsg = '';
 let status = 'Loading...';
 let setup = new SetupCheck();
-// The play space (calibrate.js): measured once per start, before the first picker, and again after a camera switch
-// (a new picture, a new space) or when a grown-up presses P in the picker. ?nocal and ?level= skip it.
+// The play space (calibrate.js): measured every time a group joins from the menu, before their first picker, and
+// again after a camera switch (a new picture, a new space) or when a grown-up presses P in the picker. A new group
+// can stand somewhere else or reach further, so they get a space that fits them; skipping keeps the last one.
+// ?nocal and ?level= skip it.
 let calibration = new Calibration();
 let calibrated = !shouldCalibrate(params);
 
@@ -206,6 +208,7 @@ function startGame(joinedIds = null) {
     p.score = 0;
     p.excluded = joinedIds ? !joinedIds.includes(p.id) : false;
   }
+  calibrated = !shouldCalibrate(params); // a new group shows the game their own play space
   toPick();
 }
 
