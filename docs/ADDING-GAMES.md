@@ -78,6 +78,9 @@ same object is reused every time the level is played.
    The order is the order of the cards in the picker. Favourites (dodging, jumping) are spread out, and the
    still-pose Dance party stays last.
 
+   Then put its id in at least one game set in `src/levels/sets.js` (the cards the picker opens on), the one
+   that fits how it plays: Jump & dodge, Catch & pop or Dance & pose. Party mix picks from every level by itself.
+
 3. **Play it with the mouse.** Run `node server.mjs` and open
    `http://localhost:8137/?mouse&level=rockets`. The mouse is a pretend kid: moving it moves the body and
    hands, a click is a jump, and holding Q, W or E does arms up, airplane or hands on head, and S ducks. Press `D` for debug
@@ -236,7 +239,7 @@ Ideas that fit these rules are listed under M4 in [PLAN.md](PLAN.md#roadmap).
 
 ## Checklist
 
-- [ ] A new file in `src/levels/`, starting `/** @satisfies {Level} */`, added to `src/levels/index.js`
+- [ ] A new file in `src/levels/`, starting `/** @satisfies {Level} */`, added to `src/levels/index.js` and a set in `src/levels/sets.js`
 - [ ] All sizes and speeds in `g.u`; body-relative measures in `shoulderW`
 - [ ] Reads `g.activePlayers()`, and works with 0 kids
 - [ ] Everything reset in `start()`

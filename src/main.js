@@ -7,7 +7,8 @@ import { Ease } from './ease.js';
 import { loadArt, registerArt } from './art.js';
 import { text, drawSkeleton } from './draw.js';
 import { Lobby, lateJoin } from './lobby.js';
-import { Carousel, pickerChoices, carouselLayout, carouselCardAt, surprisePick } from './picker.js';
+import { Carousel, pickerChoices, setChoices, carouselLayout, carouselCardAt, surprisePick } from './picker.js';
+import { SETS, setPlaylist } from './levels/sets.js';
 import { drawParticles, drawHud, drawSetup, drawCalibration, drawReconnecting, drawLoading, drawMenu, drawPick, drawIntro, drawOutro, drawToast, drawDebugPanel } from './screens.js';
 import { Cutout } from './cutout.js';
 import { Backdrops } from './backdrops.js';
@@ -114,11 +115,21 @@ let levelIdx = 0;
 let lastPlayed = -1; // so "Surprise!" never picks the level just played
 let levelT = 0;
 const lobby = new Lobby({ hold: 3 });
-const choices = pickerChoices(LEVELS);
-const carousel = new Carousel({ n: choices.length });
+// The picker has two sets of cards: the game sets it opens on, and one card per level ("Pick your game").
+const levelChoices = pickerChoices(LEVELS);
+const levelCarousel = new Carousel({ n: levelChoices.length });
+const allSets = setChoices(SETS);
+const setCarousel = new Carousel({ n: allSets.length });
+/** @type {'sets' | 'levels'} */
+let pickMode = 'sets';
+const choices = () => (pickMode === 'sets' ? allSets : levelChoices);
+const carousel = () => (pickMode === 'sets' ? setCarousel : levelCarousel);
+/** @type {import('./levels/sets.js').Playlist | null} */
+let playlist = null; // the game set being played, if any
+let lastSet = -1; // the set card played last, back in the middle afterwards
 let lastStep = -9; // when the carousel last scrolled (the middle card bounces)
 // The cards as drawn this frame (for taps, and for the tests)
-const pickCards = () => carouselLayout(choices.length, carousel.pos, g.W, g.H);
+const pickCards = () => carouselLayout(choices().length, carousel().pos, g.W, g.H);
 // Playing with family in another home (docs/ONLINE.md). Idle unless the grown-up opens a room (key O) or the page
 // was opened with ?room=CODE.
 const family = new Family({ canvas, search: location.search, origin: location.origin + location.pathname, signal: params.get('signal') || SIGNAL_URL });
@@ -150,13 +161,20 @@ function toMenu() {
   setState('menu');
 }
 
-// The level picker: the kids who joined choose what to play, and come back here after every level.
-function toPick() {
+// The picker: the kids who joined choose what to play, and come back here after every level they picked, or
+// after a whole game set. mode: the set cards or the level cards.
+function toPick(mode = pickMode) {
+  pickMode = mode;
+  playlist = null;
   if (!calibrated && tracker !== mouse) return toCalibrate(); // a mouse has no room to measure
   g.level = null;
-  carousel.reset(lastPlayed >= 0 ? lastPlayed : 0); // the game just played is in the middle: "again!" is arms up
+  // the game (or set) just played is in the middle: "again!" is arms up
+  if (mode === 'sets') setCarousel.reset(lastSet >= 0 ? lastSet : 0);
+  else levelCarousel.reset(lastPlayed >= 0 ? lastPlayed : 0);
   setState('pick');
 }
+// Back to the picker from a level: to the sets after a set, else to the cards it was picked from.
+const backToPick = () => toPick(playlist ? 'sets' : pickMode);
 
 function toCalibrate() {
   g.level = null;
@@ -173,11 +191,18 @@ function calibrationDone() {
   toPick();
 }
 
-/** @param {number} i  a card in `choices` */
+/** @param {number} i  a card in `choices()` */
 function choose(i) {
-  const c = choices[i];
+  const c = choices()[i];
   if (!c) return;
   sfx.chime();
+  if (c.kind === 'all') return toPick('levels');
+  if (c.kind === 'back') return toPick('sets');
+  if (c.kind === 'set') {
+    lastSet = i;
+    playlist = { set: c.set, order: setPlaylist(c.set, LEVELS, lastPlayed), at: 0 };
+    return startLevel(playlist.order[0]);
+  }
   startLevel(c.kind === 'level' ? c.index : surprisePick(LEVELS.length, lastPlayed));
 }
 
@@ -210,13 +235,23 @@ function startGame(joinedIds = null) {
     p.excluded = joinedIds ? !joinedIds.includes(p.id) : false;
   }
   calibrated = !shouldCalibrate(params); // a new group shows the game their own play space
-  toPick();
+  lastSet = -1;
+  toPick('sets');
 }
 
-// The grown-up's "skip": the next level in the list (wrapping round).
-function nextLevel() {
-  startLevel(levelIdx + 1);
+// The next game of the set being played, or null at its end (or with no set).
+const nextInSet = () => (playlist && playlist.at + 1 < playlist.order.length ? LEVELS[playlist.order[playlist.at + 1]] : null);
+
+// After a level (or the grown-up's "skip"): the set's next game, the end of the set, or out of a set the next level in
+// the list (wrapping round) for a skip and the picker otherwise.
+function afterLevel(skip = false) {
+  if (nextInSet()) {
+    playlist.at++;
+    startLevel(playlist.order[playlist.at]);
+  } else if (playlist || !skip) backToPick();
+  else startLevel(levelIdx + 1);
 }
+const nextLevel = () => afterLevel(true);
 
 const inLevel = () => state === 'intro' || state === 'play' || state === 'outro';
 const reconnecting = () => (pose && tracker === pose && state !== 'loading' ? pose.reconnecting : null);
@@ -291,6 +326,7 @@ async function boot() {
 function jumpToLevelFromUrl() {
   const id = params.get('level');
   const i = LEVELS.findIndex((l) => l.id === id);
+  playlist = null;
   if (i >= 0) startLevel(i);
   else if (id) g.notice = `No level called "${id}". Levels: ${LEVELS.map((l) => l.id).join(', ')}`;
 }
@@ -330,16 +366,17 @@ const actions = {
     if (state === 'setup') toMenu(); // skip the setup check
     else if (state === 'calibrate') skipCalibration();
     else if (state === 'menu') startGame();
-    else if (state === 'pick') choose(carousel.index); // the game in the middle
+    else if (state === 'pick') choose(carousel().index); // the card in the middle
   },
   next() {
     if (g.level && inLevel()) nextLevel();
   },
-  // Back one step: from a level to the picker, from the picker to the join screen.
+  // Back one step: from a level to the picker, from the level cards to the sets, from the sets to the join screen.
   menu() {
     if (state === 'setup') toMenu();
     else if (state === 'calibrate') skipCalibration();
-    else if (inLevel()) toPick();
+    else if (inLevel()) backToPick();
+    else if (state === 'pick' && pickMode === 'levels') toPick('sets');
     else if (state === 'pick') toMenu();
   },
   fullscreen() {
@@ -377,6 +414,7 @@ window.addEventListener('keydown', (e) => {
   else if (k === 'p' && state === 'pick' && tracker !== mouse) toCalibrate(); // measure the play space again
   else if (k >= '1' && k <= '9' && Number(k) <= LEVELS.length && state !== 'loading') {
     if (state === 'menu') g.team.score = 0;
+    playlist = null;
     startLevel(Number(k) - 1);
   } else if (k === 'escape') actions.menu();
   else if (k === 'f') actions.fullscreen();
@@ -413,12 +451,12 @@ canvas.addEventListener('pointerdown', (e) => {
   const r = canvas.getBoundingClientRect();
   const card = carouselCardAt(pickCards(), { x: ((e.clientX - r.left) * canvas.width) / r.width, y: ((e.clientY - r.top) * canvas.height) / r.height });
   if (!card) return;
-  if (card.i === carousel.index) choose(card.i);
+  if (card.i === carousel().index) choose(card.i);
   else scroll(Math.sign(card.off) * Math.max(1, Math.round(Math.abs(card.off))));
 });
 
 function scroll(d) {
-  carousel.step(d);
+  carousel().step(d);
   lastStep = g.now;
   sfx.whoosh();
 }
@@ -491,7 +529,7 @@ function update(dt) {
     const joinedIds = lobby.update(g.activePlayers(), g.now, dt);
     if (joinedIds) startGame(joinedIds);
   } else if (state === 'pick') {
-    const { step, chosen } = carousel.update(g.activePlayers(), dt);
+    const { step, chosen } = carousel().update(g.activePlayers(), dt);
     if (step) {
       lastStep = g.now;
       sfx.whoosh();
@@ -519,7 +557,7 @@ function update(dt) {
       setState('outro');
     }
   } else if (state === 'outro') {
-    if (stateT > 4) toPick(); // back to the picker, to choose again (the same level is one card away)
+    if (stateT > 4) afterLevel(); // the set's next game, or back to the picker (the same level is one card away)
   }
 }
 
@@ -644,14 +682,14 @@ function render() {
       mouseMode: tracker === mouse,
     });
   } else if (state === 'pick') {
-    drawPick(ctx, g, choices, carousel, pickCards(), lastStep);
+    drawPick(ctx, g, pickMode === 'sets' ? 'What shall we play?' : 'Pick a game!', LEVELS, choices(), carousel(), pickCards(), lastStep);
   } else if (state === 'intro') {
-    drawIntro(ctx, g, levelIdx, stateT);
+    drawIntro(ctx, g, levelIdx, stateT, playlist);
   } else if (state === 'play') {
     drawHud(ctx, g, levelT, true);
   } else if (state === 'outro') {
     drawHud(ctx, g, levelT, false);
-    drawOutro(ctx, g, outroMsg);
+    drawOutro(ctx, g, outroMsg, nextInSet());
   }
 
   if (replay && tracker === replay) debug.drawReplay(ctx, replay);
@@ -757,6 +795,7 @@ function loadRecording(recording) {
   const start = recordingStart(recording);
   const i = LEVELS.findIndex((l) => l.id === start.level);
   replayAdmitUntil = g.now + 2;
+  playlist = null;
   if (i >= 0 && (start.state === 'intro' || start.state === 'play' || start.state === 'outro')) {
     startLevel(i);
     if (start.state !== 'intro') {
@@ -803,4 +842,4 @@ requestAnimationFrame(frame);
 boot();
 
 // handy for debugging / automated tests
-/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get carousel() { return carousel; }, get setup() { return setup; }, get calibration() { return calibration; }, pickCards, family, get recorder() { return debug.rec; }, get replay() { return replay; }, loadRecording, music };
+/** @type {any} */ (window).__game = { g, levels: LEVELS, startLevel, cutout, backdrops, get state() { return state; }, get tracker() { return tracker; }, get cutoutReady() { return cutoutReady; }, get carousel() { return carousel(); }, get pickMode() { return pickMode; }, get playlist() { return playlist; }, get setup() { return setup; }, get calibration() { return calibration; }, pickCards, family, get recorder() { return debug.rec; }, get replay() { return replay; }, loadRecording, music };

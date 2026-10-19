@@ -7,7 +7,8 @@ Guidance for AI coding assistants working in this repo. For what the game is and
 
 A webcam-controlled movement game for kids. A webcam on the TV tracks up to 4 kids with MediaPipe's pose model,
 cuts them out of the picture, and puts them in a cartoon world while they play short levels (11 so far: bubbles,
-rocks, waves, digging, ducking, balloons, freeze, poses and more), chosen in a carousel level picker. Plain JavaScript ES modules and a canvas. **No build step and no runtime dependencies.**
+rocks, waves, digging, ducking, balloons, freeze, poses and more), chosen in a carousel picker that opens on game
+sets (a few levels in a row) and ends with a card for picking one level. Plain JavaScript ES modules and a canvas. **No build step and no runtime dependencies.**
 The only npm dependency is `puppeteer-core`, for the browser tests.
 
 ## Commands
@@ -40,7 +41,8 @@ src/look.js        pure: a person's clothing colours from a tiny frame copy
 src/camera.js      pure camera logic: constraints (16:9 720p wish), next-camera choice, saved camera, FpsGuard, withRetry
 src/filter.js      One Euro filter for skeleton smoothing
 src/lobby.js       join-by-arms-out: arms out for 3 s starts the game with exactly those kids; lateJoin() mid-game
-src/picker.js      level picker carousel: wave a hand out to the side to scroll, both arms up to play; taps and arrows too
+src/picker.js      picker carousel: wave a hand out to the side to scroll, both arms up to play; taps and arrows too.
+                   Opens on the game sets (src/levels/sets.js, a few levels in a row); "Pick your game" shows every level
 src/controls.js    on-screen buttons (touch), full-screen note, screen wake lock
 src/device.js      pure: phone/tablet detection and starting settings
 src/levels/        one file per level, index.js = the list (play order), kit.js = helpers + checkLevel, _template.js
