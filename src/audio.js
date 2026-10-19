@@ -161,6 +161,13 @@ export const sfx = {
     [2637, 2093, 1568].forEach((f, i) => tone(f, 0.3, { delay: i * 0.06, vol: 0.06 }));
   },
   crack: () => noise(0.15, { freq: 2500, to: 600, q: 1.5, vol: 0.22 }),
+  splat: () => {
+    noise(0.18, { freq: 700, to: 200, filter: 'lowpass', q: 2, vol: 0.32 }); // a snowball in the face
+    tone(320, 0.12, { type: 'triangle', to: 140, vol: 0.12 });
+  },
+  squelch: () => noise(0.22, { freq: 400, to: 1400, q: 4, vol: 0.2 }), // wiping mud off
+  // a silly blown raspberry: a buzzy low note that wobbles
+  raspberry: () => [0, 1, 2, 3, 4, 5, 6, 7].forEach((i) => tone(i % 2 ? 98 : 117, 0.07, { type: 'sawtooth', delay: i * 0.055, vol: 0.09 })),
 };
 
 // ------------------------------------------------------------------ music

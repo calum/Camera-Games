@@ -53,6 +53,8 @@ export const SONGS = {
   balloons: { name: 'Up and away', bpm: 100, root: 65, chords: [0, 5, 3, 4], style: 'bounce', lead: 'sine', seed: 29 },
   wall: { name: 'Squeeze through', bpm: 112, root: 67, chords: [0, 3, 4, 0], style: 'drive', lead: 'square', seed: 3 },
   dance: { name: 'Disco', bpm: 110, root: 57, chords: [5, 3, 0, 4], style: 'drive', lead: 'triangle', seed: 19 },
+  snowball: { name: 'Snowball silly', bpm: 132, root: 65, chords: [0, 4, 5, 4], style: 'bounce', lead: 'square', seed: 37 },
+  fly: { name: 'Up in the clouds', bpm: 104, root: 62, chords: [0, 5, 3, 4], style: 'float', lead: 'sine', seed: 43 },
 };
 // Freeze! plays its own little tune and the kids freeze when it stops, so other music there would spoil it.
 export const SILENT_LEVELS = new Set(['freeze']);

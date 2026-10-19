@@ -59,7 +59,7 @@ function kid(over = {}) {
 }
 
 test('there are four levels, each with the full interface', () => {
-  assert.equal(LEVELS.length, 11);
+  assert.equal(LEVELS.length, 13);
   for (const L of LEVELS) {
     assert.equal(typeof L.start, 'function', L.id);
     assert.equal(typeof L.update, 'function', L.id);

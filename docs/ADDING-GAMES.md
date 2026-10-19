@@ -4,7 +4,8 @@ This guide is for anyone adding a level (a mini-game) or changing one, whether y
 coding assistant. It covers how a level works, what it can read, a step-by-step for a new level, how to test
 it, and the design rules that came out of playtesting with real kids.
 
-A level is **one file** in `src/levels/`. It reads a few tidy facts about each kid ("where are their hands?",
+A level is **one file** in `src/levels/`. **Fort games**, where every player gets their own part of the screen and
+they throw things at each other, are levels too, with a few extras: see [FORT-GAMES.md](FORT-GAMES.md). It reads a few tidy facts about each kid ("where are their hands?",
 "did they just jump?") and draws on a canvas. It never touches the camera or the pose model, so you can build
 and test a whole level with the mouse standing in for a kid.
 
@@ -79,7 +80,7 @@ same object is reused every time the level is played.
    still-pose Dance party stays last.
 
    Then put its id in at least one game set in `src/levels/sets.js` (the cards the picker opens on), the one
-   that fits how it plays: Jump & dodge, Catch & pop or Dance & pose. Party mix picks from every level by itself.
+   that fits how it plays: Jump & dodge, Catch & pop, Dance & pose or Fort games. Party mix picks from every level by itself.
 
 3. **Play it with the mouse.** Run `node server.mjs` and open
    `http://localhost:8137/?mouse&level=rockets`. The mouse is a pretend kid: moving it moves the body and

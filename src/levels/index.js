@@ -12,7 +12,9 @@ import meteor from './meteor.js';
 import balloons from './balloons.js';
 import duckjump from './duckjump.js';
 import freeze from './freeze.js';
+import snowball from './snowball.js';
+import fly from './fly.js';
 
 /** @type {Level[]} */
 // Favourites (dodging, jumping) are spread out; the still-pose Dance party comes last.
-export const LEVELS = [bubbles, dodge, jump, dig, duckjump, meteor, avalanche, balloons, freeze, wall, dance];
+export const LEVELS = [bubbles, dodge, jump, dig, duckjump, meteor, avalanche, balloons, freeze, wall, snowball, fly, dance];

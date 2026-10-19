@@ -6,8 +6,8 @@ Guidance for AI coding assistants working in this repo. For what the game is and
 ## What this is
 
 A webcam-controlled movement game for kids. A webcam on the TV tracks up to 4 kids with MediaPipe's pose model,
-cuts them out of the picture, and puts them in a cartoon world while they play short levels (11 so far: bubbles,
-rocks, waves, digging, ducking, balloons, freeze, poses and more), chosen in a carousel picker that opens on game
+cuts them out of the picture, and puts them in a cartoon world while they play short levels (13 so far: bubbles,
+rocks, waves, digging, ducking, balloons, freeze, poses, a snowball fight and more), chosen in a carousel picker that opens on game
 sets (a few levels in a row) and ends with a card for picking one level. Plain JavaScript ES modules and a canvas. **No build step and no runtime dependencies.**
 The only npm dependency is `puppeteer-core`, for the browser tests.
 
@@ -46,6 +46,9 @@ src/picker.js      picker carousel: wave a hand out to the side to scroll, both 
 src/controls.js    on-screen buttons (touch), full-screen note, screen wake lock
 src/device.js      pure: phone/tablet detection and starting settings
 src/levels/        one file per level, index.js = the list (play order), kit.js = helpers + checkLevel, _template.js
+src/forts.js       pure: fort games' layout. Every player gets their own fort (screen column); main.js draws each kid's
+                   slice of the cut-out there. Levels with `forts: true` read forts(g) from kit.js (docs/FORT-GAMES.md)
+src/levels/monkey.js the cartoon monkey: the fort games' computer player for a kid alone
 src/online.js      pure maths for family play: room codes, guest skeletons -> remote players, cut-out video frame
 src/family.js      family play glue: WebRTC pairing, sending/receiving cut-out video (see docs/ONLINE.md)
 src/room-code.js   room code format, shared with the Cloudflare Worker (no imports)
@@ -72,6 +75,10 @@ Key ideas to preserve:
 
 - **Adding or changing a level: follow [docs/ADDING-GAMES.md](docs/ADDING-GAMES.md).** One file per level,
   registered in `src/levels/index.js`; `test/unit/all-levels.test.js` plays every listed level automatically.
+- **Fort games** (`forts: true`, [docs/FORT-GAMES.md](docs/FORT-GAMES.md)): each player in their own fort, so kids
+  side by side are far apart in the game. Their rules: funny first (glitchy is fine), kids stand still and move
+  only their arms (throws go up and over, never sideways), youngest player 4, a hit never costs the kid who was
+  hit, and a kid alone plays the monkey. Hit tests use the fort's `hands`/`circles`, which are in fort space.
 - **Levels only read the `player` object** (`px[33]` landmarks, `hands[]`, `circles[]`, `sh`, `hip`, `cx`, `lastJump`,
   `pose.{armsUp,airplane,handsHead}`, `score`, `excluded`). Keep tracking and game logic separate so the tracker can
   be swapped. Use `g.activePlayers()`, which filters out kids who sat out.

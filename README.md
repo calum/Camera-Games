@@ -9,7 +9,7 @@ Built for a family living room: one laptop, one cheap webcam, two or three kids 
 
 ## The levels
 
-Eleven short levels (30 to 60 seconds each), in the order they appear in the picker:
+Thirteen short levels (30 to 60 seconds each), in the order they appear in the picker:
 
 | Level | What you do |
 |---|---|
@@ -23,6 +23,8 @@ Eleven short levels (30 to 60 seconds each), in the order they appear in the pic
 | **Keep it up!** (party in the park) | Tap the balloons back up with your hands or head and don't let them touch the floor. |
 | **Freeze!** (disco) | Dance while the music plays; when it stops, FREEZE. Wobblers crack their ice cube. |
 | **Hole in the wall!** (game show) | A wall rushes at you with a pose-shaped hole: strike the pose before it arrives. |
+| **Snowball fight!** (snowy mountains) | A fort game: everyone gets their own snow fort. Hand down to make a snowball, lift it over your head to throw it at the next fort. Hits give carrot noses, snow hats, wobbles and spins; five hits and you're a snowman. Touch the mud bucket to splat everyone else, then wipe it off. Alone? You play a cheeky monkey. |
+| **Fly high!** (sky) | A fort game: flap your arms to fly up your own column of sky, arms out to glide. Catch the stars; storm clouds make you spin out. Grab the tickly feather and everyone else spins. Alone, a flying monkey keeps you company. |
 | **Dance party** (disco) | Copy the stick-figure pose on screen (arms up, airplane, hands on head) and hold it. |
 
 Every level has its own synthesized sound effects, and the game quietly eases off when the kids keep missing

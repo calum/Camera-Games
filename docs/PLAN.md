@@ -88,9 +88,11 @@ The first four, from the original demo:
 Added after the first playtest, favouring whole-body action: **Dig down!** (each jump stomps a brick), **Duck and
 jump** (logs and birds), **Catch the stars!** (bubbles plus dodging meteors), **Avalanche!** (dodge, jump boulders,
 hide from a giant boulder), **Keep it up!** (balloons), **Freeze!** (freeze dance) and **Hole in the wall!** (poses
-with a wall coming at you). The play order is in `src/levels/index.js`; Dance party, the least liked, comes last.
+with a wall coming at you). Then the first **fort games** ([FORT-GAMES.md](FORT-GAMES.md)), where every player
+has their own fort and kids standing side by side are far apart in the game: **Snowball fight!** and **Fly
+high!**, with a monkey to play against for a kid alone. The play order is in `src/levels/index.js`; Dance party, the least liked, comes last.
 
-The picker opens on game sets (`src/levels/sets.js`: Party mix, Jump & dodge, Catch & pop, Dance & pose), which
+The picker opens on game sets (`src/levels/sets.js`: Party mix, Jump & dodge, Catch & pop, Dance & pose, Fort games), which
 play a few levels in a row; its last card, Pick your game, shows one card per level. After a single level the
 level cards come back, after a set the sets; nothing else plays on by itself. Every level has its own synthesized
 sounds, and auto-ease (`src/ease.js`) lowers the difficulty when the kids keep missing.
