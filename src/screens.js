@@ -197,9 +197,9 @@ export function drawLoading(ctx, g, status) {
 // The join screen: everything said in a band at the top, and a countdown ring over each kid with their arms out.
 /**
  * @param {CanvasRenderingContext2D} ctx  @param {G} g
- * @param {{ lobby: Lobby, mobile: boolean, portrait: boolean, slowGraphics: boolean, mouseMode: boolean }} o
+ * @param {{ lobby: Lobby, mobile: boolean, portrait: boolean, slowGraphics: boolean, slowNote?: string, mouseMode: boolean }} o
  */
-export function drawMenu(ctx, g, { lobby, mobile, portrait, slowGraphics, mouseMode }) {
+export function drawMenu(ctx, g, { lobby, mobile, portrait, slowGraphics, slowNote = '', mouseMode }) {
   const u = g.u;
   ctx.fillStyle = 'rgba(8,12,30,0.3)';
   ctx.fillRect(0, 0, g.W, g.H);
@@ -237,8 +237,8 @@ export function drawMenu(ctx, g, { lobby, mobile, portrait, slowGraphics, mouseM
   if (g.notice) text(ctx, g.notice, g.W / 2, g.H * 0.26, 28 * u, { color: '#ffb3b3' });
   // the setup check only runs once, but acceleration can be switched off later: say so every time
   if (slowGraphics) {
-    text(ctx, `The game may lag: graphics acceleration is off. ${accelerationHelp(navigator.userAgent)}`, g.W / 2, g.H * 0.3, 26 * u, { color: '#ffe14d' });
-  }
+    note(ctx, g, `The game may lag: graphics acceleration is off. ${accelerationHelp(navigator.userAgent)}`, g.H * 0.3);
+  } else if (slowNote) note(ctx, g, slowNote, g.H * 0.3);
   if (mouseMode) text(ctx, 'Mouse mode: move = body & hands, click = jump, Q/W/E = poses', g.W / 2, g.H * 0.8, 28 * u);
 }
 
@@ -254,6 +254,22 @@ export function drawPick(ctx, g, title, levels, choices, carousel, cards, lastSt
   ctx.fillRect(0, 0, g.W, g.H);
   text(ctx, title, g.W / 2, g.H * 0.045, 60 * u, { color: '#ffe14d' });
   drawPicker(ctx, g, levels, choices, carousel, cards, lastStep);
+}
+
+// Running slowly (speed.js): what would help, for the grown-up, along the bottom of the picker.
+/** @param {CanvasRenderingContext2D} ctx  @param {G} g  @param {string} msg */
+export function drawSpeedNote(ctx, g, msg) {
+  note(ctx, g, msg, g.H - 30 * g.u);
+}
+
+// A yellow line for the grown-up, shrunk to fit the screen's width (the acceleration help is long).
+/** @param {CanvasRenderingContext2D} ctx  @param {G} g  @param {string} msg  @param {number} y */
+function note(ctx, g, msg, y) {
+  let size = 26 * g.u;
+  ctx.font = `800 ${size}px "Trebuchet MS", system-ui, sans-serif`;
+  const w = ctx.measureText(msg).width;
+  if (w > g.W * 0.96) size *= (g.W * 0.96) / w;
+  text(ctx, msg, g.W / 2, y, size, { color: '#ffe14d' });
 }
 
 // Before a level: its name, its hint and a bouncing 3, 2, 1. In a game set, which game of the set it is.

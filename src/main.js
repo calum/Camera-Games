@@ -9,7 +9,7 @@ import { text, drawSkeleton, drawPoseIcon } from './draw.js';
 import { Lobby, lateJoin } from './lobby.js';
 import { Carousel, pickerChoices, setChoices, carouselLayout, carouselCardAt, surprisePick } from './picker.js';
 import { SETS, setPlaylist } from './levels/sets.js';
-import { drawParticles, drawHud, drawSetup, drawCalibration, drawReconnecting, drawLoading, drawMenu, drawPick, drawIntro, drawOutro, drawToast, drawDebugPanel } from './screens.js';
+import { drawParticles, drawHud, drawSetup, drawCalibration, drawReconnecting, drawLoading, drawMenu, drawPick, drawSpeedNote, drawIntro, drawOutro, drawToast, drawDebugPanel } from './screens.js';
 import { Cutout } from './cutout.js';
 import { syncForts, applyFort, fortOf } from './forts.js';
 import { Backdrops } from './backdrops.js';
@@ -22,7 +22,8 @@ import { DebugSession } from './debug-record.js';
 import { recordingStart } from './recording.js';
 import { ReplayTracker } from './replay.js';
 import { Calibration, shouldCalibrate } from './calibrate.js';
-import { SetupCheck, shouldRunSetup, saveSetupDone, frameBrightness, judgeCamera, judgeLight, judgeDistance, judgeSpeed, judgeGraphics, softwareRendering } from './setup-check.js';
+import { SpeedWatch, speedAdvice, adviceText } from './speed.js';
+import { SetupCheck, shouldRunSetup, saveSetupDone, frameBrightness, judgeCamera, judgeLight, judgeDistance, judgeSpeed, judgeGraphics, softwareRendering, accelerationHelp } from './setup-check.js';
 
 const canvas = /** @type {HTMLCanvasElement} */ (document.getElementById('c'));
 const ctx = canvas.getContext('2d');
@@ -312,6 +313,7 @@ async function boot() {
     status = 'Starting the camera... (click Allow)';
     await pose.startCamera({ deviceId: loadSavedCamera(globalThis.localStorage) }); // remembers the camera picked with C
     tracker = pose;
+    watchComputer();
     if (pose.cameraCount > 1) toast(`Camera: ${pose.cameraLabel}  (${pose.cameraCount} found, press C to switch)`, 5);
     resize();
     if (shouldRunSetup(params, globalThis.localStorage)) {
@@ -625,6 +627,49 @@ function watchFrameRate(dt) {
   }
 }
 
+// Running slowly for a while (a laptop on battery, a dim room slowing the camera, more people in view): say what
+// would help most, once as a note and then on the join screen and the picker until it is quick again. See speed.js.
+const speed = new SpeedWatch();
+/** @type {{ charging: boolean | null, pressure: string | null }} */
+const computer = { charging: null, pressure: null };
+let speedNoted = false;
+function watchComputer() {
+  const nav = /** @type {any} */ (navigator);
+  // Edge and Chrome only; elsewhere these stay unknown and the advice works without them
+  nav.getBattery?.().then((b) => {
+    const read = () => (computer.charging = b.charging);
+    read();
+    b.addEventListener('chargingchange', read);
+  }).catch(() => {});
+  try {
+    const PO = /** @type {any} */ (globalThis).PressureObserver;
+    if (PO) new PO((records) => (computer.pressure = records.at(-1)?.state ?? null)).observe('cpu').catch(() => {});
+  } catch {
+    /* not allowed here (e.g. a cross-origin frame) */
+  }
+}
+function slowAdvice() {
+  return speedAdvice({
+    software: softwareRendering(gpuName(), pose?.delegate ?? ''),
+    accelerationHelp: accelerationHelp(navigator.userAgent),
+    charging: computer.charging,
+    cameraFps: pose?.cameraFps ?? 0,
+    pressure: computer.pressure,
+    bodies: speed.bodies,
+    cores: navigator.hardwareConcurrency,
+    memoryGB: /** @type {any} */ (navigator).deviceMemory,
+  });
+}
+function watchSpeed(now) {
+  const live = pose && tracker === pose && !reconnecting() && !document.hidden && state !== 'loading' && state !== 'setup';
+  if (!live) return speed.reset();
+  if (speed.update(now, pose.frameSeq, pose.bodies) && !speedNoted) {
+    speedNoted = true; // a note once; after that it stays on the join screen and the picker
+    console.warn(`running slowly: ${speed.tracked.toFixed(1)} tracked/s, ${speed.drawn.toFixed(0)} fps, ${speed.bodies.toFixed(1)} people`);
+    toast(slowAdvice().tip, 8);
+  }
+}
+
 // ------------------------------------------------------------------ render
 // Which cartoon world to show: one per level, a meadow in the menu and the picker.
 function backdropId() {
@@ -730,10 +775,12 @@ function render() {
       mobile: settings.mobile,
       portrait: camera && pose.isPortrait,
       slowGraphics: camera && softwareRendering(gpuName(), pose.delegate),
+      slowNote: speed.slow ? adviceText(slowAdvice()) : '',
       mouseMode: tracker === mouse,
     });
   } else if (state === 'pick') {
     drawPick(ctx, g, pickMode === 'sets' ? 'What shall we play?' : 'Pick a game!', LEVELS, choices(), carousel(), pickCards(), lastStep);
+    if (speed.slow) drawSpeedNote(ctx, g, adviceText(slowAdvice()));
   } else if (state === 'intro') {
     drawIntro(ctx, g, levelIdx, stateT, playlist);
   } else if (state === 'play') {
@@ -780,6 +827,7 @@ function debugLines() {
     `tracking ${tracker?.delegate}${cam ? `, ${pose.useWorker ? 'worker' : 'main thread'}, ${pose.quality.name} (${pose.modelName})` : ''}   players ${g.activePlayers().length}   state ${state}   diff ${g.diff.toFixed(2)}`,
     cam ? `camera ${pose.cameraLabel} ${pose.video.videoWidth}x${pose.video.videoHeight} (${pose.mode}, ${pose.cameraFps ? pose.cameraFps.toFixed(0) + ' fps' : 'measuring'})` : 'camera: none',
     `cut-out ${g.view === 'cutout' && cutoutReady ? `${(s.coverage * 100).toFixed(0)}% of screen, pose mask ${s.poseActive ? 'ON' : 'LOST'}` : 'off'}   screen ${g.W}x${g.H}   fx ${g.fx ? 'on' : 'off'}`,
+    `computer ${navigator.hardwareConcurrency ?? '?'} cores, ${/** @type {any} */ (navigator).deviceMemory ?? '?'} GB, ${computer.charging === null ? 'power ?' : computer.charging ? 'plugged in' : 'ON BATTERY'}, processor ${computer.pressure ?? '?'}   people tracked ${pose?.bodies ?? 0}${speed.slow ? '   RUNNING SLOWLY' : ''}`,
     `${browser}   gpu ${gpuName()}   play space ${g.area ? `${Math.round(g.area.x0 * 100)}-${Math.round(g.area.x1 * 100)}% (hands ${Math.round(g.area.reach0 * 100)}-${Math.round(g.area.reach1 * 100)}%)` : 'whole screen'}`,
   ];
 }
@@ -883,6 +931,7 @@ function frame(ts) {
   g.now = now;
   update(dt);
   watchFrameRate(dt);
+  watchSpeed(now);
   watchDebug(now);
   if (g.debug) debug.sample(now);
   playMusic();
