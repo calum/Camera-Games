@@ -1023,6 +1023,11 @@ function recordingLine() {
 
 /** @param {import('./recording.js').Recording | null} recording */
 function useReplay(recording) {
+  if (pose) {
+    // a recording loaded in the middle of a live game (L): the camera and the pose model aren't needed any more
+    pose.stop();
+    pose = null;
+  }
   replay = new ReplayTracker(recording ?? { kind: '', version: 1, meta: {}, frames: [], samples: [], events: [] });
   tracker = replay;
   g.players = [];

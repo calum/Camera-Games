@@ -61,6 +61,27 @@ test('toddler with both arms up (real tracked numbers) is recognised as arms up'
 // ---- small-kid proportions: shoulders 70px, big head, short arms --------------------------------
 const kid = { nose: { x: 500, y: 300 }, sh: { x: 500, y: 355 }, shoulderW: 70 };
 
+// The jump is the one measure still scaled by torso length (it is a hip movement), and a toddler's hips are the
+// joints most often mis-tracked. With the photo's numbers (shoulders 110px, about 22 cm, so ~5 px/cm; torso 184px,
+// long because the hips sit low) a small two-footed jump must still count, and wobbly hips must not.
+test('toddler jump (real tracked numbers): a 12 cm hop counts once, wobbly hips standing still never do', () => {
+  const at = (rise, wobble = 0) =>
+    skeleton({ nose: { x: 774, y: 391 - rise }, sh: { x: 764, y: 436 - rise }, shoulderW: 110, hipDrop: 184 + wobble, wl: { x: 700, y: 560 - rise }, wr: { x: 830, y: 560 - rise } });
+  const p = player(at(0));
+  let t = 0;
+  const frame = (px) => {
+    p.px = px;
+    computeFeatures(p, (t += 1 / 15)); // slow tracking: 15 frames a second
+  };
+  const r = rng(7);
+  for (let i = 0; i < 45; i++) frame(at(0, (r() - 0.5) * 16)); // 3 s standing, hips wobbling +-8px
+  assert.equal(p.jumps, 0, 'wobbly hips are not a jump');
+  for (const rise of [20, 45, 60, 45, 20, 0]) frame(at(rise)); // up 12 cm and down, over 0.4 s
+  assert.equal(p.jumps, 1, 'the hop counts once');
+  for (let i = 0; i < 30; i++) frame(at(0, (r() - 0.5) * 16));
+  assert.equal(p.jumps, 1);
+});
+
 test('small kid: arms up, airplane, hands on head are each recognised (and only that pose)', () => {
   const armsUp = poseOf(skeleton({ ...kid, wl: { x: 450, y: 250 }, wr: { x: 550, y: 250 } }));
   assert.deepEqual(armsUp, { armsUp: true, airplane: false, handsHead: false, duck: false });

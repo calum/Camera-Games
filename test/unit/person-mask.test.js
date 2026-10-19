@@ -232,4 +232,10 @@ test('mergeMasks ORs every person into one small mask the shape of the frame, an
   assert.deepEqual([...mask], [1, 0, 0, 1, 1, 0, 0, 1]);
   assert.deepEqual(closed, [0, 6]);
   assert.deepEqual(mergeMasks(undefined, 4, 640, 320), { mask: null, maskH: 0 });
+  // a spare mask handed back by the main thread is cleared and reused, but only when it is the right size
+  const spare = new Float32Array(8).fill(0.7);
+  const again = mergeMasks([person(0)], 4, 640, 320, spare);
+  assert.equal(again.mask, spare);
+  assert.deepEqual([...again.mask], [1, 0, 0, 0, 1, 0, 0, 0]);
+  assert.notEqual(mergeMasks([person(0)], 4, 640, 480, spare).mask, spare, 'a different frame shape gets a new array');
 });

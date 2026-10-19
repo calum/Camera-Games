@@ -1100,6 +1100,18 @@ test('RECORDING: in debug mode R saves the last minute, G adds screen video, and
     assert.ok(rec.samples.some((s) => s.state === 'menu' && s.players.length === 1 && typeof s.detectMs === 'number' && s.quality === 'high'));
     assert.ok(rec.events.some((e) => e.type === 'toast' && /Recording the screen/.test(e.text)));
     assert.match(rec.meta.debug.join(' '), /round trip/);
+
+    // loading it into the live game (L) turns the camera off: a replay doesn't need it
+    await page.evaluate((text) => {
+      window.__liveVideo = window.__game.tracker.video;
+      window.__game.loadRecording(JSON.parse(text));
+    }, json[3]);
+    const after = await page.evaluate(() => ({
+      delegate: window.__game.tracker.delegate,
+      cameraOff: window.__liveVideo.srcObject.getTracks().every((t) => t.readyState === 'ended'),
+    }));
+    assert.deepEqual(after, { delegate: 'replay', cameraOff: true });
+    await page.waitForFunction(() => window.__game.g.players.some((p) => p.present && p.pose.airplane), { timeout: 30000, polling: 100 });
     assert.deepEqual(problems, []);
 
     // play it back: no camera, the same person appears, in the same pose

@@ -34,7 +34,7 @@ class FakeContext {
   createBiquadFilter = () => node('filter');
   createBufferSource = () => node('noise');
   createBuffer = (ch, len) => ({ getChannelData: () => new Float32Array(len) });
-  createMediaStreamSource = (s) => ({ connect: (an) => (an.stream = s) });
+  createMediaStreamSource = (s) => ({ to: null, connect(an) { this.to = an; an.stream = s; }, disconnect() { if (this.to) this.to.stream = null; this.to = null; s.disconnected = true; } });
   createAnalyser = () => ({ fftSize: 0, stream: null, getFloatTimeDomainData(buf) { buf.fill(this.stream?.loud ? 0.2 : 0.001); } });
 }
 globalThis.window = /** @type {any} */ ({ AudioContext: FakeContext });
@@ -87,4 +87,31 @@ test('music plays, changes song, goes quiet, and ducks under voices on a family 
   assert.notEqual(g.send.gain.target, DUCK, 'but not what we send them');
   call(false, true);
   assert.equal(g.send.gain.target, DUCK, 'our kids talking ducks the music the other home hears');
+});
+
+test('voice analysers are let go when a stream leaves the call or its audio ends', () => {
+  unlock();
+  const track = { readyState: 'live' };
+  const first = { loud: false, getAudioTracks: () => [track] };
+  const second = { loud: false, getAudioTracks: () => [{ readyState: 'live' }] };
+  const later = { loud: true, tracks: [], getAudioTracks() { return this.tracks; } };
+  const call = (/** @type {any[]} */ incoming) => music.update('menu', { family: true, incoming, outgoing: null });
+  call([first]);
+  assert.equal(music.listening, 1);
+  call([second]); // a reconnect: a new stream replaces the old one
+  assert.equal(music.listening, 1);
+  assert.ok(first.disconnected, 'the old stream is disconnected');
+  call([]);
+  assert.equal(music.listening, 0);
+  assert.ok(second.disconnected);
+  call([later]); // no audio track yet: not written off...
+  assert.equal(music.listening, 0);
+  later.tracks.push({ readyState: 'live' });
+  call([later]); // ...and heard once it has one
+  assert.equal(music.listening, 1);
+  assert.equal(music._gains().local.gain.target, DUCK);
+  later.tracks[0].readyState = 'ended';
+  call([later]); // its audio ended: let go
+  assert.equal(music.listening, 0);
+  call([]);
 });

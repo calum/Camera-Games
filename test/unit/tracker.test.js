@@ -99,6 +99,21 @@ test('without silhouettes from the model, the cut-out mask is drawn from the ske
   assert.ok(t.maskLow.every((v) => v === 0));
 });
 
+// The worker's silhouette arrays are handed back once replaced, so it can fill them again instead of making a new
+// one (about 200 KB) for every tracked frame.
+test('a replaced silhouette mask goes back to the engine for reuse', () => {
+  const t = new PoseTracker();
+  const given = [];
+  t.engine = /** @type {any} */ ({ recycle: (m) => given.push(m), close() {} });
+  const first = new Float32Array(64 * 36);
+  const second = new Float32Array(64 * 36);
+  t._apply({ landmarks: [], looks: [], mask: first, maskW: 64, maskH: 36 }, 1);
+  assert.deepEqual(given, [], 'the mask in use is kept');
+  t._apply({ landmarks: [], looks: [], mask: second, maskW: 64, maskH: 36 }, 2);
+  assert.equal(t.maskLow, second);
+  assert.deepEqual(given, [first], 'the old one is handed back');
+});
+
 // ---- drawing: kids stay visible ---------------------------------------------------------------------
 // A fake canvas context that records how thick each stroke is.
 function fakeCtx() {
