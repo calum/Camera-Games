@@ -1,6 +1,9 @@
 # Plan: camera setup and "Paint your playground"
 
-Status: **planned, nothing built yet.** This is the single plan for calibrating the play area; the product
+Status: **partly superseded.** A simpler play-space check was built first (PR #21, `src/calibrate.js`): after
+joining, the kids walk as far as they can each way and the levels keep to that range (`reachX` / `standX` in
+`src/levels/kit.js`). The painted playground below, the camera confirm step and a saved playground per camera
+are not built. This is the single plan for calibrating the play area; the product
 plan in [PUBLIC-PLAN.md](PUBLIC-PLAN.md) links here instead of repeating it. It builds on the camera picker (key
 **C**, `src/camera.js`) and the cut-out (`src/person-mask.js`, `src/cutout.js`), which are already built. The
 first-launch setup check (`src/setup-check.js`: camera, light, distance, speed) is also built and covers part of

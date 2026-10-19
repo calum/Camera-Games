@@ -2,6 +2,14 @@ import { drawArt } from './art.js';
 import { rng } from './scene-kit.js';
 import { BONES } from './tracker.js';
 
+// A rounded-rectangle path. ctx.roundRect is missing on older tablets (Safari before 16, Chrome before 99),
+// where calling it threw on every frame: they get square corners instead.
+export function roundRectPath(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, w, h, r);
+  else ctx.rect(x, y, w, h);
+}
+
 export function text(ctx, str, x, y, size, o = {}) {
   const { color = '#fff', stroke = 'rgba(0,0,0,0.75)', align = 'center', weight = 800 } = o;
   ctx.font = `${weight} ${size}px "Trebuchet MS", system-ui, sans-serif`;

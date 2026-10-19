@@ -5,7 +5,7 @@ import { sfx, unlock, music } from './audio.js';
 import { moodFor, musicOn, saveMusicOn } from './music.js';
 import { Ease } from './ease.js';
 import { loadArt, drawArt, registerArt } from './art.js';
-import { text, drawSkeleton, drawHeart, popScale } from './draw.js';
+import { text, drawSkeleton, drawHeart, popScale, roundRectPath } from './draw.js';
 import { Lobby, lateJoin } from './lobby.js';
 import { Carousel, pickerChoices, carouselLayout, carouselCardAt, surprisePick, drawPicker } from './picker.js';
 import { Cutout } from './cutout.js';
@@ -665,8 +665,7 @@ function drawHud() {
 
 function roundRect(x, y, w, h, color, r = h / 2) {
   ctx.fillStyle = color;
-  ctx.beginPath();
-  ctx.roundRect(x, y, w, h, r);
+  roundRectPath(ctx, x, y, w, h, r);
   ctx.fill();
 }
 

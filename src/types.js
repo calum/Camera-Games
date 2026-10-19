@@ -48,6 +48,7 @@
  * @property {number[] | null} [look]  appearance signature (clothing colours), used to recognise them again
  * @property {any[]} [filters]    the tracker's smoothing filters, one pair per landmark
  * @property {boolean} [isNew]    set by the tracker for a person it has not seen before (cleared by main.js)
+ * @property {{ cx: number, cy: number, sw: number }} [seenAt]  raw shoulders at the last sighting (people.js matching)
  * @property {boolean} [partial]  the last sighting was half out of the picture (people.js matches it sideways only)
  * @property {number} [joinHold]  seconds a watcher has held their arms out to join mid-game (lobby.js)
  * @property {any} [hold]         level scratch space
