@@ -82,6 +82,14 @@ test('duck and jump: ducking under a bird scores; jumping does not help', () => 
   assert.equal(runHazard('bird', [kid()], jumpAt(0)).kids[0].score, 0);
 });
 
+test('duck and jump: staying down until the bird has gone by scores (it was a BONK in a play test)', () => {
+  // the kid ducks before the bird arrives and is still down when it is judged, so lastDuck is "now" then
+  const stayDown = (p, h, g) => {
+    if (h.x >= p.cx - 300) p.lastDuck = g.now;
+  };
+  assert.equal(runHazard('bird', [kid()], stayDown).kids[0].score, 1);
+});
+
 test('duck and jump: doing nothing is a BONK with a hint, and never costs hearts or ends the level', () => {
   const { g, kids } = runHazard('bird', [kid()], () => {});
   assert.equal(kids[0].score, 0);

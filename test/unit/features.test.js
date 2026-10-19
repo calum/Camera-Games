@@ -159,6 +159,28 @@ test('ducking: landing from a jump is not a duck', () => {
   assert.equal(p.lastDuck, undefined);
 });
 
+test('ducking: standing up from a long, deep duck is not a jump, and the next duck is seen straight away', () => {
+  // From a play-test recording: the hip baseline sank with the hips into the duck, so standing back up looked
+  // like a jump for seconds, which froze the duck baseline low and hid the next duck.
+  const p = standing();
+  for (let f = 0; f < 30; f++) computeFeatures(p, f / 30);
+  let f = 30;
+  for (let round = 0; round < 3; round++) {
+    p.px = crouched(500).px; // nearly sitting on the floor for 2 s
+    for (const end = f + 60; f < end; f++) computeFeatures(p, f / 30);
+    assert.equal(p.pose.duck, true, `round ${round}: ducking`);
+    p.px = standing().px;
+    for (const end = f + 30; f < end; f++) computeFeatures(p, f / 30);
+    assert.equal(p.jumps, 0, `round ${round}: standing up is not a jump`);
+    assert.equal(p.pose.duck, false, `round ${round}: standing again`);
+    p.px = crouched(120).px; // an ordinary duck, seen within a few frames
+    for (const end = f + 4; f < end; f++) computeFeatures(p, f / 30);
+    assert.equal(p.pose.duck, true, `round ${round}: the next duck`);
+    p.px = standing().px;
+    for (const end = f + 30; f < end; f++) computeFeatures(p, f / 30);
+  }
+});
+
 test('motion: standing still is near 0, dancing is fast, and one jittery frame barely moves it', () => {
   const p = standing();
   for (let f = 0; f < 30; f++) computeFeatures(p, f / 30);
