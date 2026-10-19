@@ -1,7 +1,8 @@
 // The screens drawn over the game: the join screen, the setup check, the play-space walk, the picker, a level's
 // intro, HUD and outro, the reconnecting screen, toasts and the debug panel. Drawing only: main.js decides which
 // screen shows and passes in what each one needs. All the words stay in the top band, so the kids can watch themselves.
-/** @import { Game } from './types.js' */
+/** @import { Game, Level } from './types.js' */
+/** @import { Playlist } from './levels/sets.js' */
 /** @typedef {Game & Record<string, any>} G  the game object, with main.js's extras (particles, toast, notice) */
 /** @import { Lobby } from './lobby.js' */
 /** @import { Carousel } from './picker.js' */
@@ -242,21 +243,25 @@ export function drawMenu(ctx, g, { lobby, mobile, portrait, slowGraphics, mouseM
 }
 
 /**
- * @param {CanvasRenderingContext2D} ctx  @param {G} g
- * @param {Parameters<typeof drawPicker>[2]} choices  @param {Carousel} carousel  @param {Parameters<typeof drawPicker>[4]} cards
+ * @param {CanvasRenderingContext2D} ctx  @param {G} g  @param {string} title
+ * @param {Parameters<typeof drawPicker>[2]} levels  @param {Parameters<typeof drawPicker>[3]} choices
+ * @param {Carousel} carousel  @param {Parameters<typeof drawPicker>[5]} cards
  * @param {number} lastStep  when the carousel last scrolled
  */
-export function drawPick(ctx, g, choices, carousel, cards, lastStep) {
+export function drawPick(ctx, g, title, levels, choices, carousel, cards, lastStep) {
   const u = g.u;
   ctx.fillStyle = 'rgba(8,12,30,0.3)';
   ctx.fillRect(0, 0, g.W, g.H);
-  text(ctx, 'Pick a game!', g.W / 2, g.H * 0.045, 60 * u, { color: '#ffe14d' });
-  drawPicker(ctx, g, choices, carousel, cards, lastStep);
+  text(ctx, title, g.W / 2, g.H * 0.045, 60 * u, { color: '#ffe14d' });
+  drawPicker(ctx, g, levels, choices, carousel, cards, lastStep);
 }
 
-// Before a level: its name, its hint and a bouncing 3, 2, 1.
-/** @param {CanvasRenderingContext2D} ctx  @param {G} g  @param {number} levelIdx  @param {number} stateT  seconds into the intro */
-export function drawIntro(ctx, g, levelIdx, stateT) {
+// Before a level: its name, its hint and a bouncing 3, 2, 1. In a game set, which game of the set it is.
+/**
+ * @param {CanvasRenderingContext2D} ctx  @param {G} g  @param {number} levelIdx  @param {number} stateT  seconds into the intro
+ * @param {Playlist | null} [playlist]
+ */
+export function drawIntro(ctx, g, levelIdx, stateT, playlist = null) {
   const u = g.u;
   ctx.fillStyle = 'rgba(8,12,30,0.4)';
   ctx.fillRect(0, 0, g.W, g.H);
@@ -264,7 +269,8 @@ export function drawIntro(ctx, g, levelIdx, stateT) {
   ctx.globalAlpha = 0.35;
   fillRoundRect(ctx, g.W * 0.08, g.H * 0.15, g.W * 0.84, g.H * 0.42, g.level.color, 60 * u);
   ctx.globalAlpha = 1;
-  text(ctx, `${g.level.icon ?? ''}  Level ${levelIdx + 1}`, g.W / 2, g.H * 0.22, 70 * u, { color: '#ffe14d' });
+  const which = playlist ? `${playlist.set.title}: game ${playlist.at + 1} of ${playlist.order.length}` : `Level ${levelIdx + 1}`;
+  text(ctx, `${g.level.icon ?? ''}  ${which}`, g.W / 2, g.H * 0.22, 70 * u, { color: '#ffe14d' });
   text(ctx, g.level.title, g.W / 2, g.H * 0.36, 130 * u * popScale(stateT));
   text(ctx, g.level.hint, g.W / 2, g.H * 0.5, 50 * u);
   // 3, 2, 1: each number lands with a bounce on its own second
@@ -273,9 +279,9 @@ export function drawIntro(ctx, g, levelIdx, stateT) {
   drawPlayerCount(ctx, g, 'playing');
 }
 
-// The end of a level: how it went, the team's score and each kid's stars.
-/** @param {CanvasRenderingContext2D} ctx  @param {G} g  @param {string} msg */
-export function drawOutro(ctx, g, msg) {
+// The end of a level: how it went, the team's score and each kid's stars. In a game set, what comes next.
+/** @param {CanvasRenderingContext2D} ctx  @param {G} g  @param {string} msg  @param {Level | null} [next] */
+export function drawOutro(ctx, g, msg, next = null) {
   const u = g.u;
   ctx.fillStyle = 'rgba(8,12,30,0.4)';
   ctx.fillRect(0, 0, g.W, g.H);
@@ -284,6 +290,7 @@ export function drawOutro(ctx, g, msg) {
   // each kid's stars, best first, side by side
   const ranked = g.players.filter((p) => !p.excluded).sort((a, b) => b.score - a.score);
   ranked.forEach((p, i) => text(ctx, `${i === 0 ? '👑 ' : ''}★ ${p.score}`, g.W * ((i + 1) / (ranked.length + 1)), g.H * 0.62, 64 * u, { color: p.color }));
+  if (next) text(ctx, `Next: ${next.icon ?? ''} ${next.title}`, g.W / 2, g.H * 0.78, 60 * u, { color: '#7dff6b' });
 }
 
 // A short message in the middle of the screen (g.toast), until it runs out.

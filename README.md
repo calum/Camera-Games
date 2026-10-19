@@ -35,11 +35,15 @@ keep bubbles, stars, balloons, treasure and the safe gap inside the space the ki
 **Esc** or a tap skips it (the last play space is kept), and **P** in the picker measures it again (after a camera switch it is measured again
 by itself).
 
-Then the kids choose what to play on the **level picker**, a carousel of big picture cards: the
-current game in the middle, the previous and next ones either side (plus a **Surprise!** card). Waving a hand
-out to the right shows the next game, to the left the previous one, and **both arms straight up** for about a
-second plays the game in the middle. After each level the picker comes back with that game in the middle, so
-"again!" is just arms up.
+Then the kids choose what to play on the **picker**, a carousel of big picture cards: the current card in the
+middle, the previous and next ones either side. Waving a hand out to the right shows the next card, to the left
+the previous one, and **both arms straight up** for about a second plays the card in the middle.
+
+The picker opens on **game sets**, each playing a few levels in a row: **Party mix** (four random levels, new
+ones every time), **Jump & dodge**, **Catch & pop** and **Dance & pose**. The last card, **Pick your game**,
+swaps them for one card per level (plus **Surprise!** and **Back** to the sets). After a set the sets come back
+with it in the middle; after a single level the level cards come back with that game in the middle, so "again!"
+is just arms up. The sets are in `src/levels/sets.js`.
 
 ## Quick start
 
@@ -109,13 +113,13 @@ details and [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md) how the pairi
 
 | Key | Does |
 |---|---|
-| Space / Enter | Start with everyone (on to the level picker); in the picker, play the game in the middle |
-| ← / → | In the picker, show the previous / next game |
+| Space / Enter | Start with everyone (on to the picker); in the picker, play the card in the middle |
+| ← / → | In the picker, show the previous / next card |
 | P | In the picker, show the game the play space again (walk left, then right) |
 | F | Fullscreen |
 | 1 - 9 | Play that level (by its place in the list) |
-| N | Next level |
-| Esc | Back one step: from a level to the picker, from the picker to the menu (everyone can join again) |
+| N | Next level (in a game set, the set's next game) |
+| Esc | Back one step: from a level to the picker, from the level cards to the sets, from the sets to the menu (everyone can join again) |
 | C | Switch to the next camera (a phone webcam app shows up as an extra camera); the choice is remembered |
 | B | Show just the kids in a cartoon world (default), or the whole camera picture |
 | K | Skeleton overlay: thin line (default), bold, or off |

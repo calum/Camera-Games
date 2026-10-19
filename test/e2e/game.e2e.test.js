@@ -693,7 +693,7 @@ test('MOUSE MODE: a well-timed jump scores in the jump level, standing still doe
   }
 });
 
-test('PICKER (mouse mode): scroll to a level and hold both arms up to play it, then come back to the picker, not the next level', { skip }, async () => {
+test('PICKER (mouse mode): open "Pick your game", scroll to a level and hold both arms up to play it, then come back to the picker, not the next level', { skip }, async () => {
   const browser = await launch(exe);
   try {
     const { page, problems } = await openGame(browser, url + '?mouse');
@@ -701,6 +701,10 @@ test('PICKER (mouse mode): scroll to a level and hold both arms up to play it, t
     await page.mouse.move(640, 650);
     await page.keyboard.press('Space');
     await waitForState(page, 'pick', 3000);
+    assert.deepEqual(await page.evaluate(() => [window.__game.pickMode, window.__game.carousel.index]), ['sets', 0], 'opens on the sets');
+    await page.keyboard.press('ArrowLeft'); // wraps round to the last card, "Pick your game"
+    await page.keyboard.press('Space');
+    await page.waitForFunction(() => window.__game.pickMode === 'levels', { timeout: 2000 });
     const ids = await page.evaluate(() => window.__game.levels.map((l) => l.id));
     assert.equal(await page.evaluate(() => window.__game.carousel.index), 0, 'starts on the first game');
     for (let i = 0; i < 3; i++) await page.keyboard.press('ArrowRight');
@@ -737,11 +741,59 @@ test('PICKER (mouse mode): scroll to a level and hold both arms up to play it, t
     await tapCard(0);
     await waitForState(page, 'intro', 2000);
     assert.equal(await page.evaluate(() => window.__game.g.level.id), ids[4]);
-    // Esc: from a level back to the picker, then to the join screen
+    // Esc: from a level back to the level cards, then the sets, then the join screen
     await page.keyboard.press('Escape');
     await waitForState(page, 'pick', 2000);
+    assert.equal(await page.evaluate(() => window.__game.pickMode), 'levels');
+    await page.keyboard.press('Escape');
+    await page.waitForFunction(() => window.__game.pickMode === 'sets', { timeout: 2000 });
+    assert.equal(await page.evaluate(() => window.__game.state), 'pick');
     await page.keyboard.press('Escape');
     await waitForState(page, 'menu', 2000);
+    assert.deepEqual(problems, []);
+  } finally {
+    await browser.close();
+  }
+});
+
+test('GAME SETS (mouse mode): a set plays its levels one after another, N skips within it, and the end of the set is back at the sets', { skip }, async () => {
+  const browser = await launch(exe);
+  try {
+    const { page, problems } = await openGame(browser, url + '?mouse');
+    await waitForState(page, 'menu', 20000);
+    await page.mouse.move(640, 650);
+    await page.keyboard.press('Space');
+    await waitForState(page, 'pick', 3000);
+    await page.keyboard.press('ArrowRight'); // the second set
+    await page.keyboard.press('Space');
+    await waitForState(page, 'intro', 3000);
+    const order = await page.evaluate(() => window.__game.playlist.order.map((i) => window.__game.levels[i].id));
+    assert.ok(order.length >= 3, `plays a few levels: ${order}`);
+    assert.equal(await page.evaluate(() => window.__game.g.level.id), order[0]);
+    // the first one ends: its outro, then straight into the second one, no picker in between
+    await waitForState(page, 'play', 8000);
+    await page.evaluate(() => window.__game.g.endLevel('Level complete!'));
+    await waitForState(page, 'outro', 3000);
+    await waitForState(page, 'intro', 8000);
+    assert.equal(await page.evaluate(() => window.__game.g.level.id), order[1]);
+    // the grown-up's skip stays in the set, and skipping past the last game ends it
+    for (let k = 2; k < order.length; k++) {
+      await page.keyboard.press('n');
+      await page.waitForFunction((id) => window.__game.g.level?.id === id, { timeout: 3000 }, order[k]);
+    }
+    await page.keyboard.press('n');
+    await waitForState(page, 'pick', 3000);
+    assert.deepEqual(await page.evaluate(() => [window.__game.pickMode, window.__game.carousel.index, window.__game.playlist]), ['sets', 1, null], 'the set just played is in the middle');
+    // Party mix: a few different levels
+    await page.keyboard.press('ArrowLeft');
+    await page.keyboard.press('Space');
+    await waitForState(page, 'intro', 3000);
+    const mix = await page.evaluate(() => window.__game.playlist.order);
+    assert.equal(new Set(mix).size, mix.length);
+    // Esc in the middle of a set: back to the sets
+    await page.keyboard.press('Escape');
+    await waitForState(page, 'pick', 2000);
+    assert.deepEqual(await page.evaluate(() => [window.__game.pickMode, window.__game.carousel.index]), ['sets', 0]);
     assert.deepEqual(problems, []);
   } finally {
     await browser.close();
@@ -1178,7 +1230,7 @@ test('TOUCH: tapping the screen shows the grown-up buttons; Start starts the gam
     await waitForState(page, 'pick', 3000);
     const picking = await page.evaluate(() => [...document.querySelectorAll('#controls button')].filter((b) => !b.hidden).map((b) => b.dataset.action));
     assert.ok(picking.includes('menu') && !picking.includes('next'), `picker buttons: ${picking}`);
-    // tap the middle card (the first game, bubbles)
+    // tap the middle card (the first set, Party mix)
     const card = await page.evaluate(() => {
       const c = document.getElementById('c');
       const r = window.__game.pickCards().find((card) => card.off === 0).rect;
@@ -1189,8 +1241,9 @@ test('TOUCH: tapping the screen shows the grown-up buttons; Start starts the gam
     await waitForState(page, 'intro', 3000);
     const during = await page.evaluate(() => [...document.querySelectorAll('#controls button')].filter((b) => !b.hidden).map((b) => b.dataset.action));
     assert.ok(during.includes('next') && during.includes('menu') && !during.includes('start'), `in-game buttons: ${during}`);
+    const second = await page.evaluate(() => window.__game.levels[window.__game.playlist.order[1]].id);
     await page.tap('#controls button[data-action="next"]');
-    await page.waitForFunction(() => window.__game.g.level.id === 'dodge', { timeout: 3000 });
+    await page.waitForFunction((id) => window.__game.g.level.id === id, { timeout: 3000 }, second);
     await page.waitForFunction(() => !document.getElementById('controls').classList.contains('shown'), { timeout: 8000 });
     assert.deepEqual(problems, []);
   } finally {

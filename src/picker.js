@@ -7,22 +7,37 @@
 // there for about a second while a ring fills (it drains slowly if the arms drop, so tracking jitter never
 // resets it). Arms out like an airplane is the join gesture, so it doesn't play anything: with both hands out
 // it is also a wave both ways at once, which cancels out. A grown-up can tap the side cards and the middle one,
-// or use the arrow keys and Enter; the number keys still play a level directly. The last card, "Surprise!",
-// picks a random level.
+// or use the arrow keys and Enter; the number keys still play a level directly.
+//
+// The picker opens on the game sets (src/levels/sets.js): Party mix and a few themed sets, each playing a few
+// levels in a row, and last "Pick your game", which swaps the cards for one per level. After the levels come
+// "Surprise!", a random level, and "Back" to the sets, so kids never need a grown-up to get out again.
 //
 // The maths (which way a kid is waving, the confirm ring, the layout) is pure and unit-tested; the drawing is at
 // the bottom.
 /** @import { Level, Player } from './types.js' */
+/** @import { GameSet } from './levels/sets.js' */
 import { Backdrops } from './backdrops.js';
+import { setPictures } from './levels/sets.js';
 import { artVersion } from './art.js';
 import { text, drawPoseIcon, roundRectPath } from './draw.js';
 
 /** @typedef {{ x: number, y: number, w: number, h: number }} Rect */
-/** @typedef {{ kind: 'level', index: number, level: Level } | { kind: 'surprise' }} Choice */
+/**
+ * @typedef {{ kind: 'level', index: number, level: Level } | { kind: 'surprise' } | { kind: 'back' }
+ *   | { kind: 'set', index: number, set: GameSet } | { kind: 'all' }} Choice
+ */
 
+// The level cards: every level, then Surprise and Back (to the sets).
 /** @param {Level[]} levels @returns {Choice[]} */
 export function pickerChoices(levels) {
-  return [...levels.map((level, index) => /** @type {Choice} */ ({ kind: 'level', index, level })), { kind: 'surprise' }];
+  return [...levels.map((level, index) => /** @type {Choice} */ ({ kind: 'level', index, level })), { kind: 'surprise' }, { kind: 'back' }];
+}
+
+// The set cards the picker opens on: every set, then "Pick your game".
+/** @param {GameSet[]} sets @returns {Choice[]} */
+export function setChoices(sets) {
+  return [...sets.map((set, index) => /** @type {Choice} */ ({ kind: 'set', index, set })), { kind: 'all' }];
 }
 
 // Waving, in shoulder widths (s) from the middle of the shoulders, like every pose rule. A hand is "out" when it
@@ -186,26 +201,61 @@ export function surprisePick(n, last = -1, rand = Math.random) {
 // ------------------------------------------------------------------ drawing (browser only)
 
 // A small picture of each level's cartoon world, drawn once per card size, and again when a family's own
-// background art (assets/bg_<level>.png) finishes loading.
-const thumbs = { key: '', canvases: /** @type {HTMLCanvasElement[]} */ ([]) };
-function thumbnails(levels, w, h) {
+// background art (assets/bg_<level>.png) finishes loading. A set's card shows its levels' pictures side by
+// side, and "Pick your game" all of them; those are put together once too.
+const thumbs = { key: '', canvases: /** @type {Map<string, HTMLCanvasElement>} */ (new Map()) };
+function newCanvas(w, h) {
+  const c = document.createElement('canvas');
+  c.width = Math.max(1, Math.round(w));
+  c.height = Math.max(1, Math.round(h));
+  return c;
+}
+/** @param {Choice} c @param {Level[]} levels @param {number} w @param {number} h @returns {HTMLCanvasElement | undefined} */
+function picture(c, levels, w, h) {
   const key = `${levels.length}:${Math.round(w)}x${Math.round(h)}:${artVersion()}`;
-  if (thumbs.key === key) return thumbs.canvases;
-  thumbs.key = key;
-  thumbs.canvases = levels.map((L) => {
-    const c = document.createElement('canvas');
-    c.width = Math.max(1, Math.round(w));
-    c.height = Math.max(1, Math.round(h));
+  if (thumbs.key !== key) {
+    thumbs.key = key;
+    thumbs.canvases = new Map();
+  }
+  const id = c.kind === 'level' ? c.level.id : c.kind === 'set' ? `set:${c.set.id}` : c.kind === 'all' ? 'all' : '';
+  if (!id) return undefined;
+  let pic = thumbs.canvases.get(id);
+  if (pic) return pic;
+  if (c.kind === 'level') {
+    const L = c.level;
+    pic = newCanvas(w, h);
     const custom = typeof L.backdrop === 'object' ? L.backdrop : undefined;
-    const id = typeof L.backdrop === 'string' ? L.backdrop : L.id;
     try {
-      new Backdrops().draw(c.getContext('2d'), id, c.width, c.height, 0, custom);
+      new Backdrops().draw(pic.getContext('2d'), typeof L.backdrop === 'string' ? L.backdrop : L.id, pic.width, pic.height, 0, custom);
     } catch (e) {
       console.warn('no thumbnail for', L.id, e);
     }
-    return c;
-  });
-  return thumbs.canvases;
+  } else {
+    // tiles in a grid as near square as the picture allows: 3 side by side, 4 as 2x2, 11 as 4x3
+    const list = c.kind === 'set' ? setPictures(c.set, levels) : levels;
+    const cols = Math.ceil(Math.sqrt(list.length * (w / h) * 0.6));
+    const rows = Math.ceil(list.length / cols);
+    pic = newCanvas(w, h);
+    const ctx = pic.getContext('2d');
+    list.forEach((L, k) => {
+      const tile = picture({ kind: 'level', index: levels.indexOf(L), level: L }, levels, w, h);
+      const x = Math.round(((k % cols) * pic.width) / cols);
+      const y = Math.round((Math.floor(k / cols) * pic.height) / rows);
+      if (tile) ctx.drawImage(tile, x, y, Math.ceil(pic.width / cols), Math.ceil(pic.height / rows));
+    });
+  }
+  thumbs.canvases.set(id, pic);
+  return pic;
+}
+
+// How a card looks: background, border, big picture, label.
+/** @param {Choice} c */
+function cardLook(c) {
+  if (c.kind === 'level') return { bg: '#1b2340', border: c.level.color, icon: c.level.icon ?? '🎮', label: c.level.title };
+  if (c.kind === 'set') return { bg: '#1b2340', border: c.set.color, icon: c.set.icon, label: c.set.title };
+  if (c.kind === 'all') return { bg: '#1f3a2c', border: '#7dff6b', icon: '🎮', label: 'Pick your game' };
+  if (c.kind === 'back') return { bg: '#2c2c3a', border: '#c9c9d9', icon: '⬅️', label: 'Back' };
+  return { bg: '#3a1f5c', border: '#c79bff', icon: '🎲', label: 'Surprise!' };
 }
 
 const EMOJI_FONT = '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
@@ -213,17 +263,18 @@ const EMOJI_FONT = '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans
 /**
  * @param {CanvasRenderingContext2D} ctx
  * @param {{ W: number, H: number, u: number, now: number }} g
+ * @param {Level[]} levels  every level (for the pictures)
  * @param {Choice[]} choices @param {Carousel} carousel
  * @param {{ i: number, rect: Rect, off: number }[]} cards  from carouselLayout
  * @param {number} lastStep  game time of the last scroll (the middle card bounces)
  */
-export function drawPicker(ctx, g, choices, carousel, cards, lastStep) {
+export function drawPicker(ctx, g, levels, choices, carousel, cards, lastStep) {
   const u = g.u;
-  const levels = choices.filter((c) => c.kind === 'level').map((c) => /** @type {any} */ (c).level);
   const full = cardSize(g.W, g.H);
-  const pics = thumbnails(levels, full.w, full.h * 0.62); // drawn once at the middle card's size, scaled for the others
   for (const { i, rect: r, off } of cards) {
     const c = choices[i];
+    const look = cardLook(c);
+    const pic = picture(c, levels, full.w, full.h * 0.62); // drawn once at the middle card's size, scaled for the others
     const middle = c === choices[carousel.index] && Math.abs(off) < 0.5;
     ctx.save();
     ctx.globalAlpha = Math.max(0.25, 1 - Math.max(0, Math.abs(off) - 1) * 0.6);
@@ -233,15 +284,15 @@ export function drawPicker(ctx, g, choices, carousel, cards, lastStep) {
     ctx.translate(-r.w / 2, -r.h / 2);
     const rad = 28 * u * (r.w / full.w);
     roundRectPath(ctx, 0, 0, r.w, r.h, rad);
-    ctx.fillStyle = c.kind === 'level' ? '#1b2340' : '#3a1f5c';
+    ctx.fillStyle = look.bg;
     ctx.fill();
     ctx.save();
     roundRectPath(ctx, 0, 0, r.w, r.h, rad);
     ctx.clip();
-    if (c.kind === 'level' && pics[c.index]) ctx.drawImage(pics[c.index], 0, 0, r.w, r.h * 0.62);
+    if (pic) ctx.drawImage(pic, 0, 0, r.w, r.h * 0.62);
     ctx.restore();
     ctx.lineWidth = (middle ? 10 : 5) * u;
-    ctx.strokeStyle = middle ? '#ffe14d' : c.kind === 'level' ? c.level.color : '#c79bff';
+    ctx.strokeStyle = middle ? '#ffe14d' : look.border;
     roundRectPath(ctx, 0, 0, r.w, r.h, rad);
     ctx.stroke();
     // big picture
@@ -249,9 +300,9 @@ export function drawPicker(ctx, g, choices, carousel, cards, lastStep) {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = '#fff';
-    ctx.fillText(c.kind === 'level' ? c.level.icon ?? '🎮' : '🎲', r.w / 2, r.h * 0.34);
+    ctx.fillText(look.icon, r.w / 2, r.h * 0.34);
     // short label (a grown-up can read it out)
-    const label = c.kind === 'level' ? c.level.title : 'Surprise!';
+    const label = look.label;
     text(ctx, label, r.w / 2, r.h * 0.81, Math.min(56 * u * (r.w / full.w), (r.w * 1.6) / Math.max(8, label.length)));
     // the arms-up ring around the middle picture
     const p = middle ? carousel.progress : 0;

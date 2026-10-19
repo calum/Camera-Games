@@ -90,7 +90,9 @@ jump** (logs and birds), **Catch the stars!** (bubbles plus dodging meteors), **
 hide from a giant boulder), **Keep it up!** (balloons), **Freeze!** (freeze dance) and **Hole in the wall!** (poses
 with a wall coming at you). The play order is in `src/levels/index.js`; Dance party, the least liked, comes last.
 
-After each level the level picker comes back; nothing plays on by itself. Every level has its own synthesized
+The picker opens on game sets (`src/levels/sets.js`: Party mix, Jump & dodge, Catch & pop, Dance & pose), which
+play a few levels in a row; its last card, Pick your game, shows one card per level. After a single level the
+level cards come back, after a set the sets; nothing else plays on by itself. Every level has its own synthesized
 sounds, and auto-ease (`src/ease.js`) lowers the difficulty when the kids keep missing.
 
 Design rules: team-first (shared hearts and score, per-kid stars on top); forgiving

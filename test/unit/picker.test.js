@@ -35,10 +35,10 @@ function run(c, seconds, players, start = 0) {
   return { steps, chosen: -1, t: start + seconds };
 }
 
-test('there is a card for every level plus Surprise, and every level has a picture', () => {
+test('there is a card for every level plus Surprise and Back, and every level has a picture', () => {
   const choices = pickerChoices(LEVELS);
-  assert.equal(choices.length, LEVELS.length + 1);
-  assert.equal(choices.at(-1).kind, 'surprise');
+  assert.equal(choices.length, LEVELS.length + 2);
+  assert.deepEqual(choices.slice(-2).map((c) => c.kind), ['surprise', 'back']);
   for (const L of LEVELS) assert.ok(L.icon, `${L.id} has an icon`);
 });
 
