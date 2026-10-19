@@ -4,7 +4,9 @@
 // game was doing, and what happened (state changes, scores, misses, warnings). replay.js plays it back through
 // the real tracking and game code. Pure: no DOM, nothing leaves the computer unless the file is shared.
 
-export const RECORDING_KIND = 'kids-camera-games-recording';
+export const RECORDING_KIND = 'camera-games-recording';
+// Recordings saved before the game was renamed (and the fixtures in test/) still load.
+const OLD_KINDS = ['kids-camera-games-recording'];
 export const RECORDING_VERSION = 1;
 export const KEEP_SECONDS = 60;
 
@@ -112,7 +114,7 @@ export function parseRecording(text) {
   } catch {
     throw new Error('That file is not a game recording (it is not JSON)');
   }
-  if (rec?.kind !== RECORDING_KIND) throw new Error('That file is not a game recording');
+  if (rec?.kind !== RECORDING_KIND && !OLD_KINDS.includes(rec?.kind)) throw new Error('That file is not a game recording');
   if (rec.version > RECORDING_VERSION) throw new Error('That recording is from a newer version of the game');
   if (!Array.isArray(rec.frames)) throw new Error('That recording has no tracking in it');
   rec.samples ??= [];
@@ -132,9 +134,9 @@ export function recordingStart(rec) {
   return { state: s?.state ?? rec.meta.state ?? 'menu', level: s?.level ?? rec.meta.level ?? null, levelT: s?.levelT ?? 0 };
 }
 
-// A file name that sorts by time: kcg-2026-10-18-181605
+// A file name that sorts by time: camera-games-2026-10-18-181605
 /** @param {Date} d */
 export function recordingName(d) {
   const p = (/** @type {number} */ n) => String(n).padStart(2, '0');
-  return `kcg-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
+  return `camera-games-${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 }

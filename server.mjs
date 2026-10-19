@@ -27,7 +27,7 @@ const types = {
   '.wav': 'audio/wav',
 };
 
-// base: the folder the game is served from. '/' normally; the tests use '/kids-camera-games/' to check
+// base: the folder the game is served from. '/' normally; the tests use '/camera-games/' to check
 // that the game works from a sub-folder, the way GitHub Pages serves it.
 export function createGameServer({ base = '/' } = {}) {
   return http.createServer((req, res) => {
@@ -66,6 +66,6 @@ export function createGameServer({ base = '/' } = {}) {
 // Run directly (node server.mjs): listen. When imported (tests), just export the factory.
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   createGameServer().listen(port, '127.0.0.1', () => {
-    console.log(`Kids Camera Game running at http://localhost:${port}`);
+    console.log(`Camera Games running at http://localhost:${port}`);
   });
 }

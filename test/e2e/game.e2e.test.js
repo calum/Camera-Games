@@ -1102,7 +1102,7 @@ test('DEBUG: ?debug prints a copyable summary of tracking to the console', { ski
   try {
     const { page, problems } = await openGame(browser, url + '?debug&model=full');
     const logs = [];
-    page.on('console', (m) => m.text().startsWith('[kids-camera-games debug]') && logs.push(m.text()));
+    page.on('console', (m) => m.text().startsWith('[camera-games debug]') && logs.push(m.text()));
     await waitForState(page, 'menu', 60000);
     await page.waitForFunction(() => window.__game.tracker.frameSeq > 0, { timeout: 60000 });
     const t0 = Date.now();
@@ -1142,11 +1142,11 @@ test('RECORDING: in debug mode R saves the last minute, G adds screen video, and
     await page.waitForFunction(() => window.__downloads.length >= 2, { timeout: 30000 });
     const files = await page.evaluate(() => Promise.all(window.__downloads));
     const [json, video] = files;
-    assert.match(json[0], /^kcg-\d{4}-\d\d-\d\d-\d{6}\.json$/);
-    assert.match(video[0], /^kcg-.*-video\.webm$/);
+    assert.match(json[0], /^camera-games-\d{4}-\d\d-\d\d-\d{6}\.json$/);
+    assert.match(video[0], /^camera-games-.*-video\.webm$/);
     assert.ok(video[1] > 1000, `video is ${video[1]} bytes`);
     const rec = JSON.parse(json[3]);
-    assert.equal(rec.kind, 'kids-camera-games-recording');
+    assert.equal(rec.kind, 'camera-games-recording');
     assert.ok(rec.frames.length >= 5);
     assert.equal(rec.frames[0].lm[0].length, 99, '33 landmarks x [x, y, visibility]');
     assert.ok(rec.samples.some((s) => s.state === 'menu' && s.players.length === 1 && typeof s.detectMs === 'number' && s.quality === 'high'));
@@ -1192,16 +1192,16 @@ test('MAIN-THREAD FALLBACK: with ?worker=off the pose model runs on the main thr
 });
 
 test('GITHUB PAGES: the game works from a sub-folder (every file is asked for relative to the page)', { skip }, async () => {
-  const sub = createGameServer({ base: '/kids-camera-games/' });
+  const sub = createGameServer({ base: '/camera-games/' });
   await new Promise((r) => sub.listen(0, '127.0.0.1', r));
-  const subUrl = `http://localhost:${sub.address().port}/kids-camera-games/`;
+  const subUrl = `http://localhost:${sub.address().port}/camera-games/`;
   const browser = await launch(exe, [`--use-file-for-fake-video-capture=${webcamFile}`]);
   try {
     const { page, problems } = await openGame(browser, subUrl + '?model=full');
     const outside = [];
     page.on('request', (r) => {
       const u = new URL(r.url());
-      if (u.protocol.startsWith('http') && !u.pathname.startsWith('/kids-camera-games/')) outside.push(u.pathname);
+      if (u.protocol.startsWith('http') && !u.pathname.startsWith('/camera-games/')) outside.push(u.pathname);
     });
     await waitForState(page, 'menu', 60000);
     await waitForPerson(page);

@@ -39,7 +39,7 @@ What we have learned so far:
   wide and 2 m tall, which is enough for two or three kids but not for a wide group. The game asks for a
   16:9 picture, though some webcams give no wider view for that.
 - **Phone or tablet play** (the game running on the device, connected or mirrored to the TV) works from
-  https://calum.github.io/kids-camera-games/: touch buttons (Start, Next level, Menu, Camera, Full screen),
+  https://calum.github.io/camera-games/: touch buttons (Start, Next level, Menu, Camera, Full screen),
   a full-screen note, wake lock and lighter tracking. A tablet on a USB-C to HDMI cable is the simplest setup.
 
 ### Setup guide (draft, to become a one-page guide)
@@ -49,7 +49,7 @@ Steps marked *(planned)* do not exist yet; see [PLAYGROUND-PLAN.md](PLAYGROUND-P
 **With a webcam**
 
 1. **What you need:** a laptop, a webcam, and a TV or monitor on HDMI (or just the laptop screen). No install:
-   the game is at https://calum.github.io/kids-camera-games/ (Node.js only to run your own copy).
+   the game is at https://calum.github.io/camera-games/ (Node.js only to run your own copy).
 2. **Choosing a webcam:** USB, 720p at 30 frames a second or better, and the widest field of view you can get
    (around 90 degrees or more). Check reviews to see whether the wide view is kept at 720p.
 3. **Place it:** on top of the TV, centred, tilted slightly down. Kids stand 2-3 m back with their whole body
