@@ -18,6 +18,10 @@ const DEFS = {
 };
 
 const imgs = {};
+let loaded = 0;
+
+// Goes up whenever a picture arrives, so anything drawn once and cached (the picker's thumbnails) can redraw.
+export const artVersion = () => loaded;
 
 // A level can bring its own art slots (level.art = { name: { file, emoji } }); main.js registers them
 // before loadArt(). Existing names are left alone, so a level can't break another level's art.
@@ -28,7 +32,10 @@ export function registerArt(defs) {
 export function loadArt() {
   for (const [name, def] of Object.entries(DEFS)) {
     const img = new Image();
-    img.onload = () => (def.ok = true);
+    img.onload = () => {
+      def.ok = true;
+      loaded++;
+    };
     img.onerror = () => (def.ok = false);
     img.src = new URL(`../assets/${def.file}`, import.meta.url).href; // relative: works under any site path (GitHub Pages)
     imgs[name] = img;

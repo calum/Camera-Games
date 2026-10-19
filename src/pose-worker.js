@@ -50,7 +50,12 @@ async function setModel({ model, masks: withMasks }) {
   masks = withMasks;
 }
 
-function detect({ bitmap, ts, maskW = shared.MASK_W }) {
+// The last mask's buffer, handed back by the main thread once the cut-out is done with it (saves ~200 KB of
+// garbage per tracked frame). Kept until a frame with people in it needs it.
+let spare = null;
+
+function detect({ bitmap, ts, maskW = shared.MASK_W, spare: given = null }) {
+  if (given) spare = given;
   const LOOK_W = shared.LOOK_W;
   const t0 = performance.now();
   let res;
@@ -68,7 +73,8 @@ function detect({ bitmap, ts, maskW = shared.MASK_W }) {
   const landmarks = res.landmarks.map((lm) => lm.map((l) => ({ x: l.x, y: l.y, visibility: l.visibility })));
   const looks = res.landmarks.map((lm) => lookOf(rgba, LOOK_W, lh, lm));
   // masks: all people merged into one small float array
-  const { mask, maskH } = shared.mergeMasks(res.segmentationMasks, maskW, bitmap.width, bitmap.height);
+  const { mask, maskH } = shared.mergeMasks(res.segmentationMasks, maskW, bitmap.width, bitmap.height, spare);
+  if (mask === spare) spare = null; // it goes back to the main thread with the answer
   bitmap.close();
   return { landmarks, looks, mask, maskW, maskH, ms: performance.now() - t0, delegate, modelName };
 }
@@ -79,7 +85,10 @@ self.onmessage = async (e) => {
     if (type === 'init') self.postMessage({ id, ok: true, result: await init(e.data) });
     else if (type === 'model') self.postMessage({ id, ok: true, result: await setModel(e.data) });
     else if (type === 'detect') {
-      if (busy) return self.postMessage({ id, ok: true, result: null });
+      if (busy) {
+        if (e.data.spare) spare = e.data.spare;
+        return self.postMessage({ id, ok: true, result: null });
+      }
       busy = true;
       try {
         const result = detect(e.data);

@@ -170,6 +170,8 @@ class MainThreadEngine {
   constructor() {
     this.landmarker = null;
     this.delegate = '?';
+    /** @type {Float32Array | null} */
+    this.spare = null; // the last mask, handed back for reuse (recycle)
     this.look = document.createElement('canvas');
     this.look.width = LOOK_W;
     this.look.height = 54;
@@ -228,8 +230,14 @@ class MainThreadEngine {
     this.lctx.drawImage(video, 0, 0, LOOK_W, lh);
     const rgba = this.lctx.getImageData(0, 0, LOOK_W, lh).data;
     const looks = res.landmarks.map((lm) => lookOf(rgba, LOOK_W, lh, lm));
-    const { mask, maskH } = mergeMasks(res.segmentationMasks, maskW, video.videoWidth, video.videoHeight);
+    const { mask, maskH } = mergeMasks(res.segmentationMasks, maskW, video.videoWidth, video.videoHeight, this.spare);
+    if (mask === this.spare) this.spare = null;
     return { landmarks: res.landmarks, looks, mask, maskW, maskH, ms: performance.now() - t0 };
+  }
+
+  // A mask the cut-out has finished with, to fill again next time.
+  recycle(/** @type {Float32Array} */ mask) {
+    this.spare = mask;
   }
 
   close() {
@@ -241,6 +249,8 @@ class MainThreadEngine {
 class WorkerEngine {
   constructor() {
     this.worker = new Worker(assetUrl('./pose-worker.js')); // classic: MediaPipe needs importScripts()
+    /** @type {Float32Array | null} */
+    this.spare = null; // a mask the main thread is done with: sent back with the next frame (recycle)
     this.pending = new Map();
     this.nextId = 1;
     this.delegate = '?';
@@ -282,7 +292,14 @@ class WorkerEngine {
   async detect(video, ts, { scale, maskW }) {
     const opts = scale === 1 ? {} : { resizeWidth: Math.round(video.videoWidth * scale), resizeHeight: Math.round(video.videoHeight * scale) };
     const bitmap = await createImageBitmap(video, opts);
-    return this._call({ type: 'detect', bitmap, ts, maskW }, [bitmap]);
+    const spare = this.spare;
+    this.spare = null;
+    return this._call({ type: 'detect', bitmap, ts, maskW, spare }, spare ? [bitmap, spare.buffer] : [bitmap]);
+  }
+
+  // A mask the main thread has finished with: it rides back with the next frame, for the worker to fill again.
+  recycle(/** @type {Float32Array} */ mask) {
+    if (mask.buffer.byteLength) this.spare = mask;
   }
 
   close() {
@@ -552,6 +569,14 @@ export class PoseTracker {
     this.fpsGuard = null;
   }
 
+  // Done with live tracking for good (a replay took over): the camera light goes off and the model is let go.
+  stop() {
+    this.cameraStarted = false; // nothing to heal any more
+    this.stopCamera();
+    this.engine?.close();
+    this.engine = null;
+  }
+
   // All cameras the browser knows about (labels only appear after permission has been given).
   async refreshCameras() {
     try {
@@ -751,6 +776,7 @@ export class PoseTracker {
     this.onAnswer?.(res, now); // the debug recorder (only set in debug mode)
     // the merged silhouettes: keep the array when the model found nobody so the cut-out can fade them out
     if (res.mask) {
+      if (this.maskLow && this.maskLow !== res.mask) this.engine?.recycle(this.maskLow); // nothing else holds it
       this.maskLow = res.mask;
       this.maskH = res.maskH;
     } else {

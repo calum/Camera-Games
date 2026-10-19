@@ -31,11 +31,12 @@ export function landmarkerOptions(modelAssetPath, delegate, masks) {
  * @param {number} maskW
  * @param {number} frameW
  * @param {number} frameH
+ * @param {Float32Array | null} [spare]  an old mask handed back by the main thread, reused if it is the right size
  */
-export function mergeMasks(segmentationMasks, maskW, frameW, frameH) {
+export function mergeMasks(segmentationMasks, maskW, frameW, frameH, spare = null) {
   if (!segmentationMasks?.length) return { mask: null, maskH: 0 };
   const maskH = Math.round((maskW * frameH) / frameW);
-  const mask = new Float32Array(maskW * maskH);
+  const mask = spare?.length === maskW * maskH ? spare.fill(0) : new Float32Array(maskW * maskH);
   for (const m of segmentationMasks) {
     try {
       downsampleMaxInto(m.getAsFloat32Array(), m.width, m.height, mask, maskW, maskH);

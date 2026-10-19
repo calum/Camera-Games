@@ -14,6 +14,7 @@
 // the bottom.
 /** @import { Level, Player } from './types.js' */
 import { Backdrops } from './backdrops.js';
+import { artVersion } from './art.js';
 import { text, drawPoseIcon, roundRectPath } from './draw.js';
 
 /** @typedef {{ x: number, y: number, w: number, h: number }} Rect */
@@ -184,10 +185,11 @@ export function surprisePick(n, last = -1, rand = Math.random) {
 
 // ------------------------------------------------------------------ drawing (browser only)
 
-// A small picture of each level's cartoon world, drawn once per card size.
+// A small picture of each level's cartoon world, drawn once per card size, and again when a family's own
+// background art (assets/bg_<level>.png) finishes loading.
 const thumbs = { key: '', canvases: /** @type {HTMLCanvasElement[]} */ ([]) };
 function thumbnails(levels, w, h) {
-  const key = `${levels.length}:${Math.round(w)}x${Math.round(h)}`;
+  const key = `${levels.length}:${Math.round(w)}x${Math.round(h)}:${artVersion()}`;
   if (thumbs.key === key) return thumbs.canvases;
   thumbs.key = key;
   thumbs.canvases = levels.map((L) => {

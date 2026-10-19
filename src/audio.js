@@ -209,30 +209,42 @@ function playBar(song, bar, t0, dest) {
   }
 }
 
-// Is anyone talking on these streams? One analyser per stream, made the first time it is seen.
-const listeners = new WeakMap();
+// Is anyone talking on these streams? One analyser per stream, made the first time it has a live audio track, and
+// disconnected once the stream is gone from the call (a reconnect brings new streams) or its audio has ended.
+/** @type {Map<MediaStream, { src: MediaStreamAudioSourceNode, an: AnalyserNode }>} */
+const listeners = new Map();
 let samples = null;
+// A stream with no audio track yet is tried again next frame, not written off.
+const hasAudio = (/** @type {MediaStream} */ s) => !s.getAudioTracks || s.getAudioTracks().some((t) => t.readyState !== 'ended');
 function talking(/** @type {AudioContext} */ a, /** @type {MediaStream[]} */ streams) {
   let heard = false;
   for (const s of streams) {
-    if (!s) continue;
+    if (!s || !hasAudio(s)) continue;
     if (!listeners.has(s)) {
       try {
         const an = a.createAnalyser();
         an.fftSize = 512;
-        a.createMediaStreamSource(s).connect(an); // not to the speakers: the page already plays it
-        listeners.set(s, an);
+        const src = a.createMediaStreamSource(s);
+        src.connect(an); // not to the speakers: the page already plays it
+        listeners.set(s, { src, an });
       } catch {
-        listeners.set(s, null); // no audio in it (yet)
+        continue; // no audio in it yet: try again next frame
       }
     }
-    const an = listeners.get(s);
-    if (!an) continue;
     samples ??= new Float32Array(512);
-    an.getFloatTimeDomainData(samples);
+    listeners.get(s).an.getFloatTimeDomainData(samples);
     if (rms(samples) > VOICE_RMS) heard = true;
   }
   return heard;
+}
+
+// Let go of the streams that left the call (or whose audio ended), so old analysers don't keep running on silence.
+function forgetStreams(/** @type {(MediaStream | null)[]} */ current) {
+  for (const [s, l] of listeners) {
+    if (current.includes(s) && hasAudio(s)) continue;
+    l.src.disconnect();
+    listeners.delete(s);
+  }
 }
 
 export const music = {
@@ -242,6 +254,10 @@ export const music = {
   },
   /** The music's own gains (for the tests). */
   _gains: () => mg,
+  /** How many voice streams are being listened to (for the tests). */
+  get listening() {
+    return listeners.size;
+  },
   /**
    * Call every frame. Starts, changes (with a short fade) or stops the music, keeps notes scheduled ahead, and
    * turns it down for voices on a family call.
@@ -273,6 +289,7 @@ export const music = {
       }
     }
     glide(m.level.gain, LEVEL * (family ? FAMILY : 1), now, 0.3);
+    forgetStreams([...incoming, outgoing]);
     if (talking(a, incoming)) m.heardIn = now;
     if (talking(a, outgoing ? [outgoing] : [])) m.heardOut = now;
     glide(m.local.gain, duckGain(now - m.heardIn), now, now - m.heardIn <= HOLD ? 0.03 : 0.2);
