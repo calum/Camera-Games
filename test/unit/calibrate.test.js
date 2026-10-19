@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { Calibration, playArea, shouldCalibrate, FULL_AREA, CAL } from '../../src/calibrate.js';
 import { reachX, standX } from '../../src/levels/kit.js';
-import { digSpan, pickColumn, COLS } from '../../src/levels/dig.js';
 import { LEVELS } from '../../src/levels/index.js';
 
 const W = 1920;
@@ -140,18 +139,6 @@ test('levels: without a play space everything is placed as before; with one, ins
   assert.equal(standX(g, 1), 0.9 * W);
   assert.equal(reachX(g, 0), 0.35 * W);
   assert.equal(reachX(g, 1), 0.95 * W);
-});
-
-test('dig: the columns fill the screen without a play space, and sit over it with one', () => {
-  assert.deepEqual(digSpan(), { left: 0, width: 1 });
-  const s = digSpan({ x0: 0.4, x1: 0.9, reach0: 0.35, reach1: 0.95 });
-  assert.ok(s.left >= 0 && s.left + s.width <= 1 + 1e-9);
-  // a kid at either edge of the space is in an end column, in its middle part
-  const col = (x) => pickColumn((x - s.left) * W, s.width * W);
-  assert.equal(col(0.4), 0);
-  assert.equal(col(0.9), COLS - 1);
-  // a squeezed space still gets wide columns
-  assert.ok(digSpan({ x0: 0.1, x1: 0.25, reach0: 0.05, reach1: 0.3 }).width >= 0.6 - 1e-9);
 });
 
 // Plays a level with a kid wandering inside the play space and checks where the things to touch or stand in went.

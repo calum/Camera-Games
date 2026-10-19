@@ -16,7 +16,7 @@ Eleven short levels (30 to 60 seconds each), in the order they appear in the pic
 | **Pop the bubbles** (under the sea) | Wave your hands to pop bubbles. Gold ones are worth 3. |
 | **Dodge the rocks** (volcano) | Watch for the "!" then step out of the way. The team shares 5 hearts. |
 | **Jump the waves** (beach) | Count down 3-2-1 and jump as the wave rolls past. A green glow and "NICE JUMP!" for a good one, a red "SPLASH!" if you miss. |
-| **Dig down!** (mine) | Every jump stomps the brick under your feet. Metal won't break, so step round it, and TNT goes BANG. Gems and dinosaur bones on the way down. |
+| **Dig down!** (mine) | Every jump stomps the brick under your feet; step sideways to tunnel into the next column. Break the gold row at the bottom: LEVEL COMPLETE, and you fall into a harder level. Metal won't break, TNT goes BANG, gems and dinosaur bones on the way down. The mine fits the play space (a narrow one is a single shaft). |
 | **Duck and jump** (beach) | Jump over the rolling logs and duck under the birds, each with a 3-2-1 countdown. A miss is a silly BONK, never a lost heart. |
 | **Catch the stars!** (starry night) | Touch the falling stars with your hands (gold ones are worth 3) and dodge the meteors when you see the "!". |
 | **Avalanche!** (snowy mountains) | Dodge the rocks, jump the rolling boulders, and hide in the safe gap when the giant boulder comes. |
