@@ -113,13 +113,13 @@ Key ideas to preserve:
 - **The setup check** (state `setup`) runs on the first launch with a camera, until it has passed once
   (`kcg.setupDone` in localStorage). `?setup` shows it again, `?nosetup` or `?level=` skip it, SPACE/Esc/tap skip it.
   `openGame` in the e2e helpers marks it done unless called with `{ setup: true }`.
-- **The play space** (state `calibrate`, `calibrate.js`) runs on every start, between joining and the first pick,
+- **The play space** (state `calibrate`, `calibrate.js`) runs every time a group joins from the menu, between joining and the first pick,
   and again after a camera switch or P in the picker: the kids walk as far as they can each way, because a wall
   or sofa can be in the picture where nobody can stand. The result is `g.area` (fractions of the width: `x0..x1`
   where a body can be, `reach0..reach1` where hands can get to). **Levels place anything a kid must touch, catch
   or stand in with `reachX(g, f)` / `standX(g, f)` from `kit.js`, never `f * g.W`**; without a calibration they
   equal `f * g.W`. Things that sweep the whole screen (waves, logs, birds) don't need it. Mouse mode skips it;
-  `?nocal` and `?level=` skip it, SPACE/Esc/tap skip the rest. `openGame` adds `?nocal` unless `{ calibrate: true }`.
+  `?nocal` and `?level=` skip it, SPACE/Esc/tap skip the rest (keeping the last `g.area`). `openGame` adds `?nocal` unless `{ calibrate: true }`.
 - **Debug recordings** (`?debug`: R saves, G adds screen video, `?replay` or a dropped file plays one back). Nothing
   is created until debug is on (`PoseTracker.onAnswer` stays null), video is never on by itself (it shows the
   kids), and nothing is uploaded. When Calum sends a recording, replay it, fix the bug, then add it to

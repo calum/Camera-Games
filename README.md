@@ -28,11 +28,11 @@ Eleven short levels (30 to 60 seconds each), in the order they appear in the pic
 Every level has its own synthesized sound effects, and the game quietly eases off when the kids keep missing
 (and creeps back up after a good spell), so nobody gets stuck on a level that is too hard.
 
-After joining, the kids **show the game their play space** (about 10 seconds, on every start): a big arrow says
+After joining, the kids **show the game their play space** (about 10 seconds, each time a group joins): a big arrow says
 "walk this way as far as you can go", first to one side, then the other, and a green strip grows along the floor
 as they go. A wall, a sofa or a table can be in the camera picture while nobody can stand there; the levels then
 keep bubbles, stars, balloons, treasure and the safe gap inside the space the kids really reached. **Space**,
-**Esc** or a tap skips it, and **P** in the picker measures it again (after a camera switch it is measured again
+**Esc** or a tap skips it (the last play space is kept), and **P** in the picker measures it again (after a camera switch it is measured again
 by itself).
 
 Then the kids choose what to play on the **level picker**, a carousel of big picture cards: the
@@ -222,7 +222,7 @@ src/recording.js  replay.js             debug recordings (the last minute of pla
 src/debug-record.js                     saving a recording as a download, optional screen video
 src/picker.js                           the level picker carousel
 src/setup-check.js                      the first-launch setup check (camera, light, distance, speed, GPU)
-src/calibrate.js                        the play space: where the kids can really go (walls, sofas), measured on every start
+src/calibrate.js                        the play space: where the kids can really go (walls, sofas), measured each time a group joins
 src/controls.js  device.js              on-screen buttons, full-screen note, wake lock; phone/laptop defaults
 src/levels/                             one file per level, index.js (the list), kit.js (helpers), _template.js
 src/types.js                            JSDoc types: Player, Game, Level (checked by npm run typecheck)
