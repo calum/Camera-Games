@@ -6,7 +6,7 @@ import { digSpan, pickColumn, COLS } from '../../src/levels/dig.js';
 import { LEVELS } from '../../src/levels/index.js';
 
 const W = 1920;
-const kid = (id, x) => ({ id, cx: x * W, sh: { x: x * W, y: 400 }, hands: [{ x: x * W - 120, y: 500 }, { x: x * W + 120, y: 500 }] });
+const kid = (id, x) => ({ id, color: ['#ff4d6d', '#4dd2ff'][id - 1], cx: x * W, sh: { x: x * W, y: 400 }, hands: [{ x: x * W - 120, y: 500 }, { x: x * W + 120, y: 500 }] });
 
 // Runs a calibration with kids whose positions (fractions of the width) come from fn(t); returns it when done.
 function run(fn, { secs = 40, dt = 1 / 30 } = {}) {
@@ -78,6 +78,11 @@ test('several kids: the space is everything any of them reached', () => {
     return [kid(1, walk(0.15, 0.5, t - t0)), kid(2, walk(0.45, 0.7, t - t0))];
   });
   assert.ok(Math.abs(c.area.x0 - 0.15) < 0.01 && Math.abs(c.area.x1 - 0.7) < 0.01, JSON.stringify(c.area));
+  // each kid's own ground is kept too, in their colour, so the screen can colour it in (overlaps mix)
+  const r1 = c.ranges.get(1);
+  const r2 = c.ranges.get(2);
+  assert.ok(Math.abs(r1.lo - 0.15) < 0.01 && Math.abs(r1.hi - 0.5) < 0.01 && r1.color === '#ff4d6d', JSON.stringify(r1));
+  assert.ok(Math.abs(r2.lo - 0.45) < 0.01 && Math.abs(r2.hi - 0.7) < 0.01 && r2.color === '#4dd2ff', JSON.stringify(r2));
 });
 
 test('the play space is never tiny, unmeasured sides are open, and a skip keeps what was measured', () => {

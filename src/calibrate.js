@@ -42,6 +42,8 @@ export class Calibration {
     this.handLo = Infinity; // explored hand range
     this.handHi = -Infinity;
     this.sides = { left: false, right: false }; // which sides were really measured
+    /** @type {Map<number, { lo: number, hi: number, color: string }>} each kid's own explored range, to colour it in */
+    this.ranges = new Map();
     this.finished = false;
   }
 
@@ -59,6 +61,9 @@ export class Calibration {
       hi = Math.max(hi, x);
       this.lo = Math.min(this.lo, x);
       this.hi = Math.max(this.hi, x);
+      const r = this.ranges.get(p.id);
+      if (r) (r.lo = Math.min(r.lo, x)), (r.hi = Math.max(r.hi, x)), (r.color = p.color);
+      else this.ranges.set(p.id, { lo: x, hi: x, color: p.color });
       // new ground on this side is counted in steps (a little hysteresis), so tracking jitter can't keep the
       // side open for ever, but a kid creeping slowly along still counts as moving
       if (this.phase === 'left' && !(this.lo > this.mark - STEP)) (this.mark = this.lo), (grew = true);
