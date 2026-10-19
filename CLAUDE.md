@@ -31,7 +31,8 @@ or screens. No camera is needed for either: the e2e tests feed a photo through a
 src/main.js        game loop, state machine (loading > (setup) > menu > calibrate > pick > intro > play > outro > pick ...), keys + actions
 src/screens.js     drawing only: join screen, setup check, play-space walk, picker, intro, HUD, outro, toasts, debug panel
 src/types.js       JSDoc typedefs: Player, Game, Level, Scene. Import with /** @import { Player } from './types.js' */
-src/tracker.js     PoseTracker (camera + engine + quality ladder) and MouseTracker; computeFeatures() -> a "player"
+src/tracker.js     PoseTracker (camera + engine) and MouseTracker; computeFeatures() -> a "player"
+src/quality.js     pure: the tracking quality ladder (QUALITY rungs, when to step down or up); PoseTracker follows it
 src/pose-worker.js CLASSIC Web Worker running MediaPipe (it needs importScripts); returns landmarks, mask, looks
 src/pose-shared.js what the worker and MainThreadEngine share (options, mask downsampling), so tuning can't drift
 src/people.js      pure: who is who. Probation for new bodies, matching, recall of kids who come back (by look)
@@ -101,7 +102,7 @@ Key ideas to preserve:
   under a "Reconnecting..." screen meanwhile. Checks are skipped while a camera operation is under way, and a gap
   between frames (a sleeping tab) restarts the clocks. Recovery logs use `console.warn`, never `console.error`.
 - The frame-rate fallback measures the camera's real delivery rate from `requestVideoFrameCallback`'s `presentedFrames`, not callback counts, so a slow laptop is never mistaken for a slow camera. `?cam=` pins the picture size.
-- Tracking quality is a ladder (`QUALITY` in `tracker.js`: full model, lite, lite at half size, lite without
+- Tracking quality is a ladder (`QUALITY` in `quality.js`: full model, lite, lite at half size, lite without
   masks). Laptops start at the top, phones one rung down (`device.js`); it steps down when tracking averages
   over `SLOW_MS` and back up after a long fast spell. It is timed in seconds and measures the whole round trip
   (frame sent to answer back), so a very slow device gets to a workable rung in seconds. Still slow at the bottom
