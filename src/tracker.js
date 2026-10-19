@@ -14,6 +14,7 @@ import { MASK_W, LOOK_W, landmarkerOptions, mergeMasks } from './pose-shared.js'
 import { People, COLORS } from './people.js';
 import { lookOf } from './look.js';
 import { Health, retryDelay } from './health.js';
+import { QualityLadder } from './quality.js';
 
 export { COLORS };
 
@@ -139,28 +140,6 @@ export function computeFeatures(p, now, { skipJump = false } = {}) {
   p.pose = { ...p.poseState };
   if (p.pose.duck) p.lastDuck = now;
 }
-
-// If tracking averages slower than this per frame, step down the quality ladder (see QUALITY and _watchSpeed).
-// Measured from sending a frame to getting its answer back, which is the delay the kids actually see.
-const SLOW_MS = 50;
-// ...and if it averages faster than this for a long while, step back up.
-const FAST_MS = 20;
-// The ladder works in seconds, not frames: on a machine tracking 2 frames a second, "90 frames" was
-// 45 s per step, minutes of lag before it got anywhere near a speed that works.
-const WARMUP_S = 1; // the first frames after a start or a switch are always slow (shaders compile)
-const MEASURE_S = 3; // how long to average before stepping down
-const FAST_S = 20; // how long it must stay fast before stepping back up
-
-// The quality ladder, best first. Each step is cheaper than the one before:
-//   model:  'full' is noticeably better on children; 'lite' is about twice as fast
-//   scale:  the camera frame is shrunk by this before tracking (landmarks are normalised, so nothing else changes)
-//   masks:  the person silhouettes for the cut-out cost ~6-9 ms a frame; without them the cut-out runs on motion alone
-export const QUALITY = [
-  { name: 'high', model: 'full', scale: 1, masks: true },
-  { name: 'medium', model: 'lite', scale: 1, masks: true },
-  { name: 'low', model: 'lite', scale: 0.5, masks: true },
-  { name: 'lowest', model: 'lite', scale: 0.5, masks: false },
-];
 
 const assetUrl = (/** @type {string} */ rel) => new URL(rel, import.meta.url).href;
 
@@ -313,7 +292,7 @@ class WorkerEngine {
 export class PoseTracker {
   // model: 'lite' | 'full'. Not given = start with the more accurate 'full' model (noticeably better
   // on children) and fall back to 'lite' automatically on a slow machine.
-  // quality: a QUALITY name. Pins the whole ladder (model, frame size, masks). Not given = start at
+  // quality: a QUALITY name (quality.js). Pins the whole ladder (model, frame size, masks). Not given = start at
   // `startQuality` and move up and down the ladder as the machine allows.
   // cameraMode: 'wide' | 'standard'. Not given = 'wide' (full field of view), dropping to 'standard' by itself
   // if the camera can't keep up.
@@ -341,20 +320,8 @@ export class PoseTracker {
     this.delegate = '?';
     this.useWorker = worker && typeof Worker !== 'undefined' && typeof createImageBitmap !== 'undefined';
     this.engine = null;
-    // the quality ladder (see QUALITY). ?model= pins the model only; ?quality= pins everything.
-    const pinnedModel = model === 'lite' || model === 'full' ? model : null;
-    this.pinned = !!pinnedModel; // explicit model choice: never auto-switch the model
-    this.qualityPinned = QUALITY.some((q) => q.name === quality);
-    let level = QUALITY.findIndex((q) => q.name === (this.qualityPinned ? quality : startQuality));
-    if (level < 0) level = 0;
-    if (pinnedModel) level = QUALITY.findIndex((q) => q.model === pinnedModel);
-    this.level = level;
-    this.frames = 0;
-    this.measured = 0;
-    this.speedSum = 0;
-    /** @type {number | null} */ this.watchStart = null;
-    /** @type {number | null} */ this.measureStart = null;
-    /** @type {number | null} */ this.fastSince = null;
+    // the quality ladder (quality.js). ?model= pins the model only; ?quality= pins everything.
+    this.ladder = new QualityLadder({ model, quality, startQuality });
     this.triedMainThread = false;
     this.switching = false;
     this.inflight = null;
@@ -387,7 +354,7 @@ export class PoseTracker {
   }
 
   get quality() {
-    return QUALITY[this.level];
+    return this.ladder.quality;
   }
 
   get modelName() {
@@ -449,53 +416,20 @@ export class PoseTracker {
     this.delegate = this.engine.delegate;
   }
 
-  // Keeps an eye on how long tracking takes (ms per frame, at time `now` in seconds). After a short warm-up
-  // and ~3 s of measuring: too slow, step down the ladder (full -> lite model, then a smaller frame, then no
-  // silhouettes); comfortably fast for a long while, step back up. One step at a time, with the measurement
-  // restarted after each, so it can't oscillate. Still too slow at the bottom of the ladder while tracking
-  // in the worker: try the main thread instead (see _leaveWorker).
+  // Keeps an eye on how long tracking takes (ms per frame, at time `now` in seconds) and follows the quality
+  // ladder (quality.js): a step down or up switches the model when the rung needs a different one; still too
+  // slow at the bottom of the ladder while tracking in the worker, try the main thread instead (see _leaveWorker).
   _watchSpeed(ms, now) {
-    this.frames++;
-    this.watchStart ??= now;
-    if (now - this.watchStart < WARMUP_S || this.frames <= 2) return;
-    this.measureStart ??= now;
-    this.speedSum += ms;
-    this.measured++;
-    if (ms < FAST_MS) this.fastSince ??= now;
-    else this.fastSince = null;
-    const avg = this.speedSum / this.measured;
-    const slow = now - this.measureStart >= MEASURE_S && this.measured >= 3 && avg > SLOW_MS;
-    const free = !this.qualityPinned && !this.pinned; // ?model= / ?quality= pin it (the e2e tests do)
-    if (slow && this.level < QUALITY.length - 1 && !this.qualityPinned && this._setLevel(this.level + 1)) {
-      console.warn(`tracking averages ${avg.toFixed(0)}ms/frame, stepped down to ${this.quality.name}`);
-    } else if (slow && free && this.level === QUALITY.length - 1 && this.useWorker && !this.triedMainThread) {
-      console.warn(`tracking in the worker still averages ${avg.toFixed(0)}ms/frame, trying the main thread`);
+    const move = this.ladder.watch(ms, now, this.useWorker && !this.triedMainThread);
+    if (!move) return;
+    if (move.type === 'leave-worker') {
+      console.warn(`tracking in the worker still averages ${move.avg.toFixed(0)}ms/frame, trying the main thread`);
       this.triedMainThread = true;
       this._leaveWorker();
-    } else if (this.fastSince !== null && now - this.fastSince >= FAST_S && this.level > 0) {
-      this._setLevel(this.level - 1);
-    } else return;
-    this._restartWatch();
-  }
-
-  _restartWatch() {
-    this.frames = 0;
-    this.measured = 0;
-    this.speedSum = 0;
-    this.watchStart = null;
-    this.measureStart = null;
-    this.fastSince = null;
-  }
-
-  // Move to another rung of the ladder, unless the model or the whole ladder is pinned.
-  _setLevel(level) {
-    if (this.qualityPinned) return false;
-    const from = this.quality;
-    const to = QUALITY[Math.max(0, Math.min(QUALITY.length - 1, level))];
-    if (this.pinned && to.model !== from.model) return false;
-    this.level = QUALITY.indexOf(to);
-    if (to.model !== from.model || to.masks !== from.masks) this._switchModel(to.model, to.masks);
-    return true;
+      return;
+    }
+    if (move.type === 'down') console.warn(`tracking averages ${move.avg.toFixed(0)}ms/frame, stepped down to ${move.to.name}`);
+    if (move.to.model !== move.from.model || move.to.masks !== move.from.masks) this._switchModel(move.to.model, move.to.masks);
   }
 
   async _switchModel(name, masks = this.quality.masks) {

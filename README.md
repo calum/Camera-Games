@@ -227,7 +227,8 @@ src/calibrate.js                        the play space: where the kids can reall
 src/controls.js  device.js              on-screen buttons, full-screen note, wake lock; phone/laptop defaults
 src/levels/                             one file per level, index.js (the list), kit.js (helpers), _template.js
 src/types.js                            JSDoc types: Player, Game, Level (checked by npm run typecheck)
-src/tracker.js  pose-worker.js          camera + pose model (in a worker) -> players, quality ladder
+src/tracker.js  pose-worker.js          camera + pose model (in a worker) -> players
+src/quality.js                          the tracking quality ladder: step down when slow, back up when fast
 src/pose-shared.js                      what the worker and the main-thread pose engine share
 src/health.js                           self-healing watchdog: lost camera, hung tracker
 src/people.js  look.js                  who is who: probation, matching, recognising kids who come back

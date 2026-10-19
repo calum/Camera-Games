@@ -44,7 +44,7 @@ separately and the game design carries over unchanged.
 
 ```
 index.html -> src/main.js          game loop, state machine, keys; screens.js draws the screens and HUD
-                 |-- tracker.js    PoseTracker (camera + quality ladder + self-healing) / MouseTracker
+                 |-- tracker.js    PoseTracker (camera + self-healing) / MouseTracker; quality.js = the quality ladder
                  |     |-- pose-worker.js  MediaPipe in a Web Worker (main-thread fallback in tracker.js)
                  |     |-- people.js, look.js  who is who
                  |     `-- health.js  lost camera / hung tracker verdicts
