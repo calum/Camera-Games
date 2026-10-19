@@ -109,24 +109,37 @@ export function drawSetup(ctx, g, setup, mobile) {
   text(ctx, foot, g.W / 2, g.H - 50 * u, 32 * u, { color: setup.overdue ? '#ffe14d' : '#cfd6e6' });
 }
 
-// The play-space check: a big arrow says which way to walk, and a green floor grows under the kids as they explore.
+// The play-space check: a big arrow says which way to walk, and each kid's ground is coloured in, in their own
+// colour, as they explore it. Overlapping grounds add up, so two kids' colours mix where they both went.
 // The words stay in the top band, like every screen, so the kids can watch themselves.
 /** @param {CanvasRenderingContext2D} ctx  @param {G} g  @param {Calibration} c  @param {boolean} mobile */
 export function drawCalibration(ctx, g, c, mobile) {
   const u = g.u;
   ctx.fillStyle = 'rgba(8,12,30,0.25)';
   ctx.fillRect(0, 0, g.W, g.H);
-  // the ground found so far: a green strip along the bottom, from the furthest left to the furthest right
+  const pad = 40 * u; // a body is wider than the middle of its shoulders
+  const floor = g.H - 90 * u;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter'; // red over blue makes purple, not just the colour on top
+  for (const r of c.ranges.values()) {
+    const x0 = r.lo * g.W - pad;
+    const w = (r.hi - r.lo) * g.W + 2 * pad;
+    // a light wash over the whole height of the ground, and a stronger floor strip under it
+    ctx.globalAlpha = 0.16;
+    ctx.fillStyle = r.color;
+    ctx.fillRect(x0, 0, w, floor);
+    ctx.globalAlpha = 0.45;
+    ctx.fillRect(x0, floor, w, 70 * u);
+    ctx.globalAlpha = 0.9;
+    ctx.fillRect(x0, floor, w, 8 * u);
+  }
+  ctx.restore();
+  // stars at the ends of the whole space found so far (once it is done: the play space the games will use)
   if (c.lo <= c.hi) {
     const a = c.phase === 'done' ? c.area : null;
     const x0 = (a ? a.x0 : c.lo) * g.W;
     const x1 = (a ? a.x1 : c.hi) * g.W;
-    const y = g.H - 90 * u;
-    ctx.fillStyle = 'rgba(77,255,136,0.35)';
-    ctx.fillRect(x0 - 40 * u, y, x1 - x0 + 80 * u, 70 * u);
-    ctx.fillStyle = '#4dff88';
-    ctx.fillRect(x0 - 40 * u, y, x1 - x0 + 80 * u, 8 * u);
-    for (const x of [x0 - 40 * u, x1 + 40 * u]) text(ctx, '⭐', x, y + 30 * u, 60 * u);
+    for (const x of [x0 - pad, x1 + pad]) text(ctx, '⭐', x, floor + 30 * u, 60 * u);
   }
   if (c.phase === 'done') {
     text(ctx, 'This is your play space!', g.W / 2, g.H * 0.08, 84 * u, { color: '#7dff6b' });
