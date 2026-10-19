@@ -259,3 +259,36 @@ test('two kids crossing, one behind the other, keep their own ids even when the 
     for (const [p, d] of pairs) assert.equal(p.id, d === dets[0] ? a.id : b.id, `frame ${i}`);
   }
 });
+
+// Regression (found in the 2026-10-19 review): matching compared each new body with the SMOOTHED shoulders,
+// which lag a jump by several frames, so the kid fell outside the up-and-down allowance for most of every
+// jump, their skeleton froze in mid-air, and on ~10 fps tracking no jump counted at all.
+test('a kid jumping is matched on every tracked frame, even on slow tracking', async () => {
+  globalThis.document ??= /** @type {any} */ ({ createElement: () => ({ play: async () => {}, srcObject: null, videoWidth: 1280, videoHeight: 720 }) });
+  const { ingestLandmarks } = await import('../../src/tracker.js');
+  const W = 1920;
+  const H = 1080;
+  const toCam = (px) => px.map((q) => ({ x: q.x / W, y: q.y / H, visibility: 0.9 }));
+  const map = (x, y) => ({ x: x * W, y: y * H });
+  // a good kid's jump (25 cm, shoulders 28 cm apart): 0.9 shoulder widths up and down again in 0.45 s
+  const sw = 90;
+  const v0 = 8 * sw; // px/s at take-off
+  const grav = (2 * v0) / 0.45; // px/s^2
+  for (const fps of [10, 15, 30]) {
+    const people = new People();
+    people.setView(W, H);
+    let missed = 0;
+    let p = null;
+    for (let i = 0; i < fps * 8; i++) {
+      const t = i / fps;
+      const k = t > 2 ? (t - 2) % 1.2 : 1;
+      const lift = k < 0.45 ? v0 * k - (grav * k * k) / 2 : 0;
+      ingestLandmarks(people, map, [toCam(person(960, { shoulderW: sw, top: 400 - lift }))], [null], t);
+      people.tick(t);
+      p = people.players[0];
+      if (t > 2 && p && p.seen !== t) missed++;
+    }
+    assert.equal(missed, 0, `${fps} fps: frames where the jumping kid was not matched`);
+    assert.equal(p.jumps, 5, `${fps} fps: every jump counts`);
+  }
+});

@@ -14,7 +14,7 @@
 // the bottom.
 /** @import { Level, Player } from './types.js' */
 import { Backdrops } from './backdrops.js';
-import { text, drawPoseIcon } from './draw.js';
+import { text, drawPoseIcon, roundRectPath } from './draw.js';
 
 /** @typedef {{ x: number, y: number, w: number, h: number }} Rect */
 /** @typedef {{ kind: 'level', index: number, level: Level } | { kind: 'surprise' }} Choice */
@@ -208,11 +208,6 @@ function thumbnails(levels, w, h) {
 
 const EMOJI_FONT = '"Segoe UI Emoji","Apple Color Emoji","Noto Color Emoji",sans-serif';
 
-function roundRect(ctx, x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h);
-}
-
 /**
  * @param {CanvasRenderingContext2D} ctx
  * @param {{ W: number, H: number, u: number, now: number }} g
@@ -235,17 +230,17 @@ export function drawPicker(ctx, g, choices, carousel, cards, lastStep) {
     if (middle && age < 0.35) ctx.scale(1 + 0.05 * Math.sin((age / 0.35) * Math.PI), 1 + 0.05 * Math.sin((age / 0.35) * Math.PI));
     ctx.translate(-r.w / 2, -r.h / 2);
     const rad = 28 * u * (r.w / full.w);
-    roundRect(ctx, 0, 0, r.w, r.h, rad);
+    roundRectPath(ctx, 0, 0, r.w, r.h, rad);
     ctx.fillStyle = c.kind === 'level' ? '#1b2340' : '#3a1f5c';
     ctx.fill();
     ctx.save();
-    roundRect(ctx, 0, 0, r.w, r.h, rad);
+    roundRectPath(ctx, 0, 0, r.w, r.h, rad);
     ctx.clip();
     if (c.kind === 'level' && pics[c.index]) ctx.drawImage(pics[c.index], 0, 0, r.w, r.h * 0.62);
     ctx.restore();
     ctx.lineWidth = (middle ? 10 : 5) * u;
     ctx.strokeStyle = middle ? '#ffe14d' : c.kind === 'level' ? c.level.color : '#c79bff';
-    roundRect(ctx, 0, 0, r.w, r.h, rad);
+    roundRectPath(ctx, 0, 0, r.w, r.h, rad);
     ctx.stroke();
     // big picture
     ctx.font = `${r.w * 0.4}px ${EMOJI_FONT}`;

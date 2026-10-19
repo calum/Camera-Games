@@ -34,7 +34,7 @@ export const DEFAULTS = {
   // can only have moved so far: the allowance grows with the time since the player was last seen, from
   // `riseNow` to `matchRise` (which a lost player coming back gets in full).
   riseNow: 0.3,
-  riseRate: 1.5, // extra shoulder widths per second unseen
+  riseRate: 4, // extra shoulder widths per second unseen (a kid's jump takes off at up to ~8 a second; slow tracking sees big steps)
   matchRise: 1.2,
   lookMatch: 0.1, // max look distance for a lost player to be recognised anywhere on screen...
   lookRel: 0.35, // ...and it must also be under this fraction of the two looks' brightness added together
@@ -211,7 +211,10 @@ export class People {
     this.lastMatch = now;
     const dropout = this.dropout;
     const H = this.H;
-    const where = (/** @type {Player} */ p) => ({ cx: p.cx, cy: p.sh?.y ?? 0, sw: p.shoulderW || 30 });
+    // Matching compares raw detections with the raw shoulders matched last time (`seenAt`), never with the
+    // smoothed skeleton: that lags a fast move like a jump by several frames, which put the kid outside the
+    // up-and-down allowance for most of every jump (and on ~10 fps tracking no jump counted at all).
+    const where = (/** @type {Player} */ p) => p.seenAt ?? { cx: p.cx, cy: p.sh?.y ?? 0, sw: p.shoulderW || 30 };
     const partial = new Map(dets.map((d) => [d, isPartial(d.px, W, H)]));
     // A body at the edge of the picture has no trustworthy height or size: match it sideways only, as a player
     // whose last sighting was at the edge is matched.
@@ -270,10 +273,12 @@ export class People {
     for (const [p, d] of pairs) {
       p.seen = now;
       p.present = true;
-      // where the shoulders are, for next frame's matching (the tracker refines these from the smoothed skeleton)
-      p.cx = cxOf(d.px);
-      p.sh = { x: p.cx, y: cyOf(d.px) };
-      p.shoulderW = swOf(d.px);
+      // where the shoulders are, for next frame's matching (the tracker refines cx, sh and shoulderW from the
+      // smoothed skeleton; seenAt keeps the raw sighting)
+      p.seenAt = { cx: cxOf(d.px), cy: cyOf(d.px), sw: swOf(d.px) };
+      p.cx = p.seenAt.cx;
+      p.sh = { x: p.cx, y: p.seenAt.cy };
+      p.shoulderW = p.seenAt.sw;
       p.partial = partial.get(d);
       if (d.look) p.look = p.look ? p.look.map((v, i) => v + (d.look[i] - v) * 0.05) : d.look; // learn slowly
     }

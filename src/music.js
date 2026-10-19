@@ -6,6 +6,8 @@
 // played (kids learn it) and every level sounds like its own place. 8 bars make a phrase: the opening motif
 // comes back, so it sounds like a song rather than noodling.
 
+import { rng } from './scene-kit.js'; // seeded, so a song is the same every time
+
 // How loud the music is (multiplies every note). The notes themselves sit about 10 dB under the sound effects,
 // so a pop or a bonk is always heard over the music.
 export const LEVEL = 0.6;
@@ -54,18 +56,6 @@ export const SONGS = {
 };
 // Freeze! plays its own little tune and the kids freeze when it stops, so other music there would spoil it.
 export const SILENT_LEVELS = new Set(['freeze']);
-
-/** A small seeded random number generator (mulberry32), so a song is the same every time. */
-function rng(seed) {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
 
 /** A level nobody wrote a song for still gets its own one, made from its id. @param {string} id @returns {Song} */
 function songFromId(id) {
