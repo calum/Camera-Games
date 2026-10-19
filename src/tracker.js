@@ -321,6 +321,7 @@ export class PoseTracker {
     this.lastVideoTime = -1;
     this.detectMs = 0; // round trip per tracked frame, smoothed
     this.modelMs = 0;
+    this.bodies = 0; // people the pose model found in its last answer (each one costs tracking time)
     this.delegate = '?';
     this.useWorker = worker && typeof Worker !== 'undefined' && typeof createImageBitmap !== 'undefined';
     this.engine = null;
@@ -636,6 +637,7 @@ export class PoseTracker {
       this.detectMs = this.detectMs * 0.9 + res.ms * 0.1;
       this.modelMs = this.modelMs * 0.9 + (res.modelMs ?? res.ms) * 0.1; // the model's own share (debug)
       this._watchSpeed(res.ms, now);
+      this.bodies = this.simulateLost ? 0 : (res.landmarks?.length ?? 0);
       if (this.simulateLost) this._apply({ landmarks: [], looks: [], mask: null, maskW: res.maskW, maskH: res.maskH }, now);
       else this._apply(res, now);
     }
