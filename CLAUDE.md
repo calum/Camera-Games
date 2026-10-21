@@ -6,8 +6,8 @@ Guidance for AI coding assistants working in this repo. For what the game is and
 ## What this is
 
 A webcam-controlled movement game for kids. A webcam on the TV tracks up to 4 kids with MediaPipe's pose model,
-cuts them out of the picture, and puts them in a cartoon world while they play short levels (13 so far: bubbles,
-rocks, waves, digging, ducking, balloons, freeze, poses, a snowball fight and more), chosen in a carousel picker that opens on game
+cuts them out of the picture, and puts them in a cartoon world while they play short levels (14 so far: bubbles,
+rocks, waves, digging, ducking, balloons, freeze, poses, a snowball fight, pass the bomb and more), chosen in a carousel picker that opens on game
 sets (a few levels in a row) and ends with a card for picking one level. Plain JavaScript ES modules and a canvas. **No build step and no runtime dependencies.**
 The only npm dependency is `puppeteer-core`, for the browser tests.
 
