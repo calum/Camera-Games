@@ -81,7 +81,7 @@ small and tall kids, near or far, behave the same way.
 The first four, from the original demo:
 
 1. **Pop the bubbles.** Hands pop bubbles, and gold ones are worth 3. Spawn rate scales with player count.
-2. **Dodge the rocks.** A "!" warning, then a rock drops. Half the rocks are aimed at a kid. Rocks fall at 420-560 px/s (1080p), slowed after the first playtest. The team shares 5 hearts, and 0 hearts means the level replays.
+2. **Dodge the rocks.** A "!" warning, then a rock drops. Half the rocks are aimed at a kid. Rocks fall at 220-300 px/s (1080p) after a 1.4 s warning, slowed twice after playtests (the second time for a 4-year-old). The team shares 5 hearts, and 0 hearts means the level replays.
 3. **Jump the waves.** 3-2-1 countdown, then a wave rolls across the screen. Jump as it passes you. The window is deliberately forgiving (0.5 s early to 0.3 s late). Every kid gets an obvious result: a green glowing skeleton, "NICE JUMP! +1" and a ring for a good jump, or a red skeleton with "SPLASH!" / "TOO EARLY!" and a hint for a miss.
 4. **Dance party.** Copy the stick-figure pose and hold it for about 1 s. Each kid scores separately.
 

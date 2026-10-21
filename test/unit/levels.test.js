@@ -268,7 +268,7 @@ test('jump feedback: every kid gets their own message over their own head', () =
   assert.deepEqual([a.x, a.ok, b.x, b.ok], [400, true, 1500, false]);
 });
 
-test('dodge: rocks fall at a gentler speed than the first version (max 600 px/s at 1080p)', () => {
+test('dodge: rocks fall slowly enough for a 4-year-old (max 320 px/s at 1080p)', () => {
   const g = makeG([kid()]);
   dodge.start(g);
   dodge.spawn = 0;
@@ -280,8 +280,8 @@ test('dodge: rocks fall at a gentler speed than the first version (max 600 px/s 
     speeds.push(...dodge.rocks.map((r) => r.vy));
   }
   assert.ok(speeds.length > 200);
-  assert.ok(Math.max(...speeds) <= 600, `fastest rock ${Math.max(...speeds).toFixed(0)}px/s`);
-  assert.ok(Math.min(...speeds) >= 400, 'but still a real challenge');
+  assert.ok(Math.max(...speeds) <= 320, `fastest rock ${Math.max(...speeds).toFixed(0)}px/s`);
+  assert.ok(Math.min(...speeds) >= 200, 'but still falling, not floating');
 });
 
 test('jump: each kid is judged separately', () => {

@@ -6,9 +6,11 @@ import { sfx } from '../audio.js';
 import { text } from '../draw.js';
 import { pick } from './kit.js';
 
-const CROSS_TIME = 1.8; // seconds for a log or bird to cross the screen
-const COUNTDOWN = 1.8; // 3-2-1 before it sets off
-const GAP = 3.8; // seconds between hazards (shorter in harder rounds)
+// Slow on purpose: a 4-year-old needs time to see what is coming (Calum, 2026-10-21: it was too fast).
+const CROSS_TIME = 3.4; // seconds for a log or bird to cross the screen
+const COUNT_STEP = 0.9; // seconds each number of the 3-2-1 stays up
+const COUNTDOWN = 3 * COUNT_STEP; // 3-2-1 before it sets off
+const GAP = 6.5; // seconds between hazards (shorter in harder rounds)
 const LOGS_FIRST = 2; // the first hazards are always logs, so kids learn one move at a time
 const BIRD_SHARE = 0.45; // after that, the chance a hazard is a bird
 const EARLY = 0.5; // forgiving window: the move counts from 0.5 s before it reaches you...
@@ -30,7 +32,7 @@ const duckjump = {
   icon: '🦆',
   hint: 'Jump over the logs. Duck under the birds!',
   color: '#8bd450',
-  duration: 40,
+  duration: 50,
   backdrop: 'jump', // the beach: driftwood logs and seagulls
 
   start() {
@@ -55,7 +57,7 @@ const duckjump = {
     for (const h of this.items) {
       const before = h.t;
       h.t += dt;
-      for (const mark of [-1.2, -0.6, 0]) if (before < mark && h.t >= mark) (mark === 0 ? (h.kind === 'log' ? sfx.roll : sfx.tweet) : sfx.tick)();
+      for (const mark of [-2 * COUNT_STEP, -COUNT_STEP, 0]) if (before < mark && h.t >= mark) (mark === 0 ? (h.kind === 'log' ? sfx.roll : sfx.tweet) : sfx.tick)();
       if (h.t < 0) continue;
       if (before < 0) {
         // a bird flies at the kids' head height, picked once so it doesn't wobble with tracking
@@ -108,7 +110,7 @@ const duckjump = {
     for (const h of this.items) {
       if (h.t < 0) {
         // countdown with a big picture of what's coming and what to do
-        const n = h.t < -1.2 ? '3' : h.t < -0.6 ? '2' : '1';
+        const n = h.t < -2 * COUNT_STEP ? '3' : h.t < -COUNT_STEP ? '2' : '1';
         text(ctx, `${n}  ${h.dir > 0 ? '→' : '←'}`, g.W / 2, g.H * 0.22, 180 * u, { color: '#fff' });
         text(ctx, h.kind === 'log' ? 'JUMP!' : 'DUCK!', g.W / 2, g.H * 0.36, 120 * u, { color: h.kind === 'log' ? '#ffe14d' : '#7fd0ff' });
         if (h.kind === 'log') drawLog(ctx, g.W / 2 + 330 * u, g.H * 0.22, 0.7 * u, g.now * 3);

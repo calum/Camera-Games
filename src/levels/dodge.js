@@ -4,6 +4,11 @@ import { sfx } from '../audio.js';
 import { drawWarning, drawRock } from '../draw.js';
 import { rand, pick, bodyHit, loseHeart, reachX } from './kit.js';
 
+// Slowed down twice: kids found the first version too fast, and a 4-year-old still found 420-560 too fast
+// (Calum, 2026-10-21). A slower rock is on screen longer, so they come a little less often too.
+const ROCK_SPEED = [220, 300]; // u per second
+const WARN = 1.4; // seconds of red "!" before a rock falls
+
 /** @satisfies {Level} */
 const dodge = {
   id: 'dodge',
@@ -30,15 +35,15 @@ const dodge = {
     this.spawn -= dt;
     if (this.spawn <= 0) {
       const n = Math.max(1, players.length);
-      this.spawn = Math.max(0.45, (1.35 - 0.015 * this.elapsed) / (1 + 0.35 * (n - 1)) / g.diff);
+      this.spawn = Math.max(0.7, (1.6 - 0.015 * this.elapsed) / (1 + 0.35 * (n - 1)) / g.diff);
       // Half the rocks are aimed at a kid so standing still isn't a winning plan.
       const target = players.length && Math.random() < 0.5 ? pick(players).cx : reachX(g, rand(0.06, 0.94)); // a rock over the sofa would be a free point
       this.rocks.push({
         x: Math.min(g.W * 0.97, Math.max(g.W * 0.03, target + rand(-60, 60) * u)),
         y: -120 * u,
         r: rand(45, 70) * u,
-        vy: rand(420, 560) * u * g.diff, // slowed down: kids found the first version too fast
-        warn: 0.9,
+        vy: rand(ROCK_SPEED[0], ROCK_SPEED[1]) * u * g.diff,
+        warn: WARN,
         rot: rand(0, 6.28),
         spin: rand(-4, 4),
       });

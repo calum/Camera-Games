@@ -9,23 +9,25 @@ import { sfx } from '../audio.js';
 import { text, drawWarning, drawRock } from '../draw.js';
 import { rand, pick, clamp, bodyHit, loseHeart, reachX, standX } from './kit.js';
 
-const DURATION = 45;
-const WARN = 0.9; // seconds of red "!" column before a rock falls
+export const DURATION = 50;
+const WARN = 1.4; // seconds of red "!" column before a rock falls
 const INVUL = 1; // seconds of shared invulnerability after a heart is lost
 const NEAR_MISS_W = 0.6; // near miss = a rock passes within this many shoulder widths of the body
 const NEAR_MISS_FALLBACK = 60; // ...or this many u when the shoulder width is unknown
 const PHEW_TIME = 1; // seconds the floating "PHEW!" stays
 const SHADOW_Y = 60; // shadows sit this many u above the bottom of the screen
 const BOULDER_FIRST = 12; // seconds into the level when the first boulder is announced
-const BOULDER_GAP = [6, 8]; // seconds between boulders
-const BOULDER_COUNTDOWN = 1.8; // 3-2-1 before it starts rolling
-const BOULDER_TIME = 2.2; // seconds for a boulder to cross the screen
+const BOULDER_GAP = [8, 10]; // seconds between boulders
+const ROCK_SPEED = [220, 300]; // u per second, same as Dodge (slowed for a 4-year-old, Calum 2026-10-21)
+const COUNT_STEP = 0.9; // seconds each number of the boulder 3-2-1 stays up
+const BOULDER_COUNTDOWN = 3 * COUNT_STEP; // 3-2-1 before it starts rolling
+export const BOULDER_TIME = 3.8; // seconds for a boulder to cross the screen
 const BOULDER_R = 85; // u
 const JUMP_EARLY = 0.5; // forgiving jump window: 0.5 s early...
 const JUMP_LATE = 0.3; // ...to 0.3 s late (same as the jump level)
-const BIG_BEFORE_END = 8; // the giant boulder starts this long before the end
-const BIG_WARN = 3; // seconds of warning
-const BIG_FALL = 0.35; // seconds the boulder takes to drop
+export const BIG_BEFORE_END = 10; // the giant boulder starts this long before the end
+export const BIG_WARN = 5; // seconds of warning
+export const BIG_FALL = 0.35; // seconds the boulder takes to drop
 const BIG_AFTER = 1.6; // seconds of dust after the crash (still no new rocks)
 const BIG_GAP = 0.25; // safe gap width as a fraction of the screen
 const BIG_PTS = 3;
@@ -114,14 +116,14 @@ const avalanche = {
 
     if (this.spawn <= 0 && !bigBusy) {
       const n = Math.max(1, players.length);
-      this.spawn = Math.max(0.45, (1.35 - 0.015 * this.elapsed) / (1 + 0.35 * (n - 1)) / g.diff);
+      this.spawn = Math.max(0.7, (1.6 - 0.015 * this.elapsed) / (1 + 0.35 * (n - 1)) / g.diff);
       // Half the rocks are aimed at a kid so standing still isn't a winning plan.
       const target = players.length && Math.random() < 0.5 ? pick(players).cx : reachX(g, rand(0.06, 0.94));
       this.rocks.push({
         x: Math.min(g.W * 0.97, Math.max(g.W * 0.03, target + rand(-60, 60) * u)),
         y: -120 * u,
         r: rand(45, 70) * u,
-        vy: rand(420, 560) * u * g.diff,
+        vy: rand(ROCK_SPEED[0], ROCK_SPEED[1]) * u * g.diff,
         warn: WARN,
         rot: rand(0, 6.28),
         spin: rand(-4, 4),
@@ -175,15 +177,15 @@ const avalanche = {
     // ---- rolling boulders
     if (this.elapsed >= this.nextBoulder) {
       this.nextBoulder = this.elapsed + rand(BOULDER_GAP[0], BOULDER_GAP[1]);
-      // not too close to the giant boulder
-      if (this.elapsed < DURATION - BIG_BEFORE_END - 4) {
+      // not too close to the giant boulder: this one has finished rolling before the giant one is announced
+      if (this.elapsed < DURATION - BIG_BEFORE_END - BOULDER_COUNTDOWN - BOULDER_TIME) {
         this.boulders.push({ dir: Math.random() < 0.5 ? 1 : -1, t: -BOULDER_COUNTDOWN, x: -999, rot: 0, judged: new Map() });
       }
     }
     for (const b of this.boulders) {
       const before = b.t;
       b.t += dt;
-      for (const mark of [-1.2, -0.6, 0]) if (before < mark && b.t >= mark) (mark === 0 ? sfx.roll : sfx.tick)();
+      for (const mark of [-2 * COUNT_STEP, -COUNT_STEP, 0]) if (before < mark && b.t >= mark) (mark === 0 ? sfx.roll : sfx.tick)();
       if (b.t < 0) continue;
       const prog = b.t / BOULDER_TIME;
       const span = g.W + 2 * BOULDER_R * u * 2;
@@ -219,7 +221,7 @@ const avalanche = {
     if (big) {
       const before = big.t;
       big.t += dt;
-      for (const mark of [BIG_WARN - 2, BIG_WARN - 1]) if (before < mark && big.t >= mark) sfx.tick();
+      for (let mark = 1; mark < BIG_WARN; mark++) if (before < mark && big.t >= mark) sfx.tick();
       if (!big.judged && big.t >= BIG_WARN + BIG_FALL) {
         big.judged = true;
         sfx.kaboom();
@@ -281,7 +283,7 @@ const avalanche = {
     // rolling boulders: 3-2-1 + arrow, then JUMP!
     for (const b of this.boulders) {
       if (b.t < 0) {
-        const n = b.t < -1.2 ? '3' : b.t < -0.6 ? '2' : '1';
+        const n = b.t < -2 * COUNT_STEP ? '3' : b.t < -COUNT_STEP ? '2' : '1';
         text(ctx, `${n}  ${b.dir > 0 ? '→' : '←'}`, g.W / 2, g.H * 0.3, 220 * u, { color: '#fff' });
         continue;
       }
