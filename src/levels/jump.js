@@ -3,8 +3,11 @@
 import { sfx } from '../audio.js';
 import { text } from '../draw.js';
 
-const WAVE_TIME = 1.6; // seconds for the wave to cross the screen
-const COUNTDOWN = 1.8;
+// Slow on purpose: a 4-year-old needs time to see the wave coming (Calum, 2026-10-21: it was too fast).
+const WAVE_TIME = 3.2; // seconds for the wave to cross the screen
+const COUNT_STEP = 0.9; // seconds each number of the 3-2-1 stays up
+const COUNTDOWN = 3 * COUNT_STEP;
+const GAP = 7; // seconds between waves
 const FEEDBACK_TIME = 1.7; // seconds a jump result stays on screen
 
 /** @satisfies {Level} */
@@ -14,7 +17,7 @@ const jump = {
   icon: '🌊',
   hint: 'When the wave reaches you, JUMP!',
   color: '#2bd1a0',
-  duration: 32,
+  duration: 42,
 
   start() {
     this.waves = [];
@@ -30,13 +33,13 @@ const jump = {
     if (this.next <= 0) {
       this.waves.push({ dir: this.dir, t: -COUNTDOWN, x: -999, judged: new Map(), tick: 4 });
       this.dir *= -1;
-      this.next = 4.8 / Math.sqrt(g.diff);
+      this.next = GAP / Math.sqrt(g.diff);
     }
     for (const w of this.waves) {
       const before = w.t;
       w.t += dt;
       // countdown ticks at 3, 2, 1
-      for (const mark of [-1.2, -0.6, 0]) if (before < mark && w.t >= mark) (mark === 0 ? sfx.wave : sfx.tick)();
+      for (const mark of [-2 * COUNT_STEP, -COUNT_STEP, 0]) if (before < mark && w.t >= mark) (mark === 0 ? sfx.wave : sfx.tick)();
       if (w.t < 0) continue;
       const prog = w.t / WAVE_TIME;
       w.x = w.dir > 0 ? -150 * u + prog * (g.W + 300 * u) : g.W + 150 * u - prog * (g.W + 300 * u);
@@ -104,7 +107,7 @@ const jump = {
 
     for (const w of this.waves) {
       if (w.t < 0) {
-        const n = w.t < -1.2 ? '3' : w.t < -0.6 ? '2' : '1';
+        const n = w.t < -2 * COUNT_STEP ? '3' : w.t < -COUNT_STEP ? '2' : '1';
         const arrow = w.dir > 0 ? '→' : '←';
         text(ctx, `${n}  ${arrow}`, g.W / 2, g.H * 0.3, 220 * u, { color: '#fff' });
       } else if (w.t < 0.9) {

@@ -1,7 +1,18 @@
 // Unit tests for Avalanche!, driven with a fake game object and fake players (no browser).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import avalanche, { rockGap, nearDistance, jumpedInTime, inGap, shadowGrow } from '../../src/levels/avalanche.js';
+import avalanche, {
+  rockGap,
+  nearDistance,
+  jumpedInTime,
+  inGap,
+  shadowGrow,
+  DURATION,
+  BOULDER_TIME,
+  BIG_BEFORE_END,
+  BIG_WARN,
+  BIG_FALL,
+} from '../../src/levels/avalanche.js';
 
 function makeG(players = []) {
   return {
@@ -71,7 +82,7 @@ const phews = () => avalanche.feedback.filter((f) => f.text.startsWith('PHEW'));
 test('avalanche: has the full level interface and uses shared hearts', () => {
   assert.equal(avalanche.id, 'avalanche');
   assert.equal(avalanche.hearts, true);
-  assert.equal(avalanche.duration, 45);
+  assert.equal(avalanche.duration, 50);
   assert.equal(avalanche.color, '#9ad0ff');
   for (const k of ['start', 'update', 'draw']) assert.equal(typeof avalanche[k], 'function');
   assert.ok(avalanche.title && avalanche.hint);
@@ -216,7 +227,7 @@ test('avalanche: rolling boulder, a jump in the window is safe, +1 and green', (
   g.now = 10;
   p.lastJump = 9.8; // 0.2 s before it arrives: inside the 0.5 s early window
   const b = boulderAt(g);
-  b.t = (960 + 170) / (1920 + 340) * 2.2; // x == 960 after the update
+  b.t = (960 + 170) / (1920 + 340) * BOULDER_TIME; // x == 960 after the update
   avalanche.update(g, 0.0001);
   step(g, 0.5);
   assert.equal(p.score, 1);
@@ -230,7 +241,7 @@ test('avalanche: rolling boulder, no jump loses one heart (red), then invulnerab
   const g = setup([p]);
   g.now = 10;
   const b = boulderAt(g);
-  b.t = (960 + 170) / (1920 + 340) * 2.2;
+  b.t = (960 + 170) / (1920 + 340) * BOULDER_TIME;
   avalanche.update(g, 0.0001);
   step(g, 0.5);
   assert.equal(p.score, 0);
@@ -253,7 +264,7 @@ test('avalanche: rolling boulder, two kids are judged separately', () => {
   const g = setup([a, b]);
   g.now = 10;
   const bo = boulderAt(g);
-  bo.t = (960 + 170) / (1920 + 340) * 2.2;
+  bo.t = (960 + 170) / (1920 + 340) * BOULDER_TIME;
   avalanche.update(g, 0.0001);
   step(g, 0.5);
   assert.deepEqual([a.score, b.score], [1, 0]);
@@ -266,7 +277,7 @@ test('avalanche: two kids who both miss the jump still cost only one heart (shar
   const g = setup([a, b]);
   g.now = 10;
   const bo = boulderAt(g);
-  bo.t = (960 + 170) / (1920 + 340) * 2.2;
+  bo.t = (960 + 170) / (1920 + 340) * BOULDER_TIME;
   avalanche.update(g, 0.0001);
   step(g, 0.5);
   assert.equal(g.team.hearts, 4);
@@ -284,18 +295,18 @@ test('avalanche: boulders are announced from 12 s in, with a countdown first', (
   step(g, 1);
   assert.equal(avalanche.boulders.length, 1);
   assert.ok(avalanche.boulders[0].t < 0, 'still counting down');
-  assert.ok(avalanche.nextBoulder - avalanche.elapsed > 5, 'next one is 6-8 s away');
+  assert.ok(avalanche.nextBoulder - avalanche.elapsed > 5, 'next one is 8-10 s away');
 });
 
 // ---- the giant boulder
 function startBig(players) {
   const g = setup(players);
-  avalanche.elapsed = 45 - 8;
+  avalanche.elapsed = DURATION - BIG_BEFORE_END;
   avalanche.update(g, 0.001);
   return g;
 }
 
-test('avalanche: the giant boulder appears in the last 8 s, with a gap about 1/4 of the screen', () => {
+test('avalanche: the giant boulder appears in the last BIG_BEFORE_END s, with a gap about 1/4 of the screen', () => {
   const g = startBig([kid()]);
   const big = avalanche.big;
   assert.ok(big);
@@ -318,7 +329,7 @@ test('avalanche: giant boulder, a kid in the gap gets +3, one outside gets nothi
   const g = startBig([a, b]);
   avalanche.big.gapX = 600;
   b.cx = 1500;
-  step(g, 3.6);
+  step(g, BIG_WARN + BIG_FALL + 0.25);
   assert.equal(a.score, 3);
   assert.equal(b.score, 0);
   assert.equal(g.team.hearts, 5);
@@ -332,7 +343,7 @@ test('avalanche: giant boulder, everyone in the gap triggers the team cheer', ()
   const b = kid({ id: 2, x: 600 });
   const g = startBig([a, b]);
   avalanche.big.gapX = 550;
-  step(g, 3.6);
+  step(g, BIG_WARN + BIG_FALL + 0.25);
   assert.deepEqual([a.score, b.score], [3, 3]);
   assert.ok(avalanche.feedback.some((f) => f.text === 'EVERYONE MADE IT!'));
 });
