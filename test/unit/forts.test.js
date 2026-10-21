@@ -205,14 +205,25 @@ test('snowball fight: mud lands on the others and they wipe it off with their ha
   run(snowball, g, 0.05);
   assert.equal(snowball.bucket, null, 'touched');
   assert.equal(owner.score, 2);
-  run(snowball, g, 2);
+  // the other kid's hands out of the way while the mud falls, or a splat landing by a hand is wiped at once
+  const hands = other.hands;
+  other.hands = hands.map(() => ({ x: -5000, y: -5000 }));
+  run(snowball, g, 3);
+  other.hands = hands;
   const mud = snowball.kids.get(other.id).mud.length;
   assert.ok(mud > 0, 'mud landed on the other kid');
-  // the other kid rubs their face and chest
+  // the other kid rubs where the first splat is (mud lands at random spots, so aim at one rather than rubbing a
+  // fixed patch, which missed every splat now and then and failed the publish)
   const before = other.score;
   run(snowball, g, 1, (t) => {
+    const m = snowball.kids.get(other.id).mud[0];
+    if (!m) return;
+    const fo = syncForts(g).find((q) => q.p === other);
+    const sw = other.shoulderW * fo.s;
+    const x = fo.head.x + m.dx * sw;
+    const y = fo.head.y + m.dy * sw;
     const ph = t * 20;
-    other.hands = other.hands.map((_, i) => ({ x: other.px[0].x + Math.sin(ph + i) * 120, y: other.px[0].y + 60 + Math.cos(ph + i) * 120 }));
+    other.hands = other.hands.map((_, i) => ({ x: fo.home + (x - fo.cx) / fo.s + Math.sin(ph + i) * 20, y: g.H + (y - g.H) / fo.s }));
   });
   assert.ok(snowball.kids.get(other.id).mud.length < mud, 'some mud wiped off');
   assert.ok(other.score > before, 'wiping scores');
