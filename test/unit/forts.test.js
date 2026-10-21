@@ -8,6 +8,7 @@ import { LEVELS } from '../../src/levels/index.js';
 
 const snowball = LEVELS.find((l) => l.id === 'snowball');
 const fly = LEVELS.find((l) => l.id === 'fly');
+const bomb = LEVELS.find((l) => l.id === 'bomb');
 
 // A standing kid at x. arms: 'down' (wrists by the hips), 'up' (over the head) or 'side'.
 function kid(id, x, arms = 'side') {
@@ -261,4 +262,91 @@ test('fly high: a lone kid flies alongside the monkey; a storm cloud spins a kid
   fly.thingX = thingX;
   assert.ok(fly.flyers.get('p1').dizzy > 0, 'dizzy');
   assert.ok(g.fortLayout.slots[0].spin > 0, 'spinning');
+});
+
+// Pass the bomb: let the first bomb drop in, and say who has it.
+function bombIn(g) {
+  bomb.start(g);
+  run(bomb, g, 2);
+  assert.equal(bomb.bombs.length, 1, 'a bomb dropped in');
+  assert.equal(bomb.bombs[0].state, 'held', 'and landed on a head');
+  return bomb.bombs[0];
+}
+
+// An arm pump by kid p: hand down, then up over the head.
+function pump(level, g, p) {
+  p.set('down', g.now);
+  run(level, g, 0.3);
+  p.set('up', g.now);
+  run(level, g, 0.1);
+  p.set('side', g.now);
+}
+
+test('pass the bomb: it lands on a kid; an arm pump throws it to the other fort and scores', () => {
+  const a = kid(1, 900);
+  const b = kid(2, 1000);
+  const g = makeG([a, b]);
+  const bm = bombIn(g);
+  bm.fuse = bm.full = 30;
+  const [holder, other] = bm.key === 'p1' ? [a, b] : [b, a];
+  pump(bomb, g, other);
+  assert.equal(bm.key, `p${holder.id}`, "the other kid's arm pump does nothing to it");
+  pump(bomb, g, holder);
+  assert.equal(bm.state, 'fly');
+  assert.equal(bm.key, `p${other.id}`, 'it flies to the other fort');
+  assert.equal(holder.score, 1, 'a throw scores');
+  run(bomb, g, 1.2);
+  assert.equal(bm.state, 'held', 'and lands on the other kid');
+});
+
+test('pass the bomb: a hand touching the bomb on your head throws it too', () => {
+  const a = kid(1, 900);
+  const b = kid(2, 1000);
+  const g = makeG([a, b]);
+  const bm = bombIn(g);
+  bm.fuse = bm.full = 30;
+  const holder = bm.key === 'p1' ? a : b;
+  const fo = syncForts(g).find((q) => q.p === holder);
+  holder.hands = holder.hands.map(() => ({ x: fo.home + (bm.x - fo.cx) / fo.s, y: g.H + (bm.y - g.H) / fo.s }));
+  run(bomb, g, 0.1);
+  assert.equal(bm.state, 'fly');
+});
+
+test('pass the bomb: BOOM on whoever has it, soot and a spin, and points for the kid who threw it, none lost', () => {
+  const a = kid(1, 900);
+  const b = kid(2, 1000);
+  const g = makeG([a, b]);
+  const bm = bombIn(g);
+  bm.fuse = 30;
+  const [thrower, victim] = bm.key === 'p1' ? [a, b] : [b, a];
+  pump(bomb, g, thrower);
+  bm.fuse = 1.2; // it lands, then goes off before the victim throws it back
+  run(bomb, g, 1.5);
+  assert.equal(bomb.bombs.length, 0, 'it went off');
+  assert.equal(bomb.kids.get(victim.id).booms, 1, 'on the kid holding it');
+  assert.ok(g.now - bomb.kids.get(victim.id).sootAt < 1, 'who is sooty now');
+  assert.equal(victim.score, 0, 'and loses nothing');
+  assert.equal(thrower.score, 3, 'the throw and the bang score for the thrower');
+  run(bomb, g, 2.5);
+  assert.equal(bomb.bombs.length, 1, 'a new bomb drops in');
+});
+
+test('pass the bomb: a kid alone plays catch with the monkey, which can get blown up too', () => {
+  const a = kid(1, 900);
+  const g = makeG([a]);
+  const bm = bombIn(g);
+  assert.equal(bm.key, 'p1', 'a new bomb lands on the kid, not the monkey');
+  bm.fuse = bm.full = 30;
+  pump(bomb, g, a);
+  assert.equal(bm.key, 's1', 'thrown to the monkey');
+  for (let i = 0; i < 100 && !(bm.key === 'p1' && bm.state === 'held'); i++) run(bomb, g, 0.05);
+  assert.equal(bm.key, 'p1', 'the monkey throws it back');
+  run(bomb, g, 0.5);
+  pump(bomb, g, a);
+  assert.equal(bm.key, 's1');
+  run(bomb, g, 1.1);
+  bm.fuse = 0.05;
+  run(bomb, g, 0.2);
+  assert.ok(g.now - bomb.monkeys.get(1).sootAt < 1, 'BOOM, a sooty monkey');
+  assert.equal(a.score, 4, 'two throws, and the bang');
 });

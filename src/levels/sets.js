@@ -26,7 +26,7 @@ export const SETS = [
   { id: 'catch', title: 'Catch & pop', icon: '🙌', color: '#4dd2ff', levels: ['bubbles', 'balloons', 'meteor'] },
   { id: 'dance', title: 'Dance & pose', icon: '🕺', color: '#b07bff', levels: ['freeze', 'wall', 'dance'] },
   // fort games (docs/FORT-GAMES.md): everyone in their own fort, throwing things at each other across the world
-  { id: 'forts', title: 'Fort games', icon: '🏰', color: '#bfe3ff', levels: ['snowball', 'fly'] },
+  { id: 'forts', title: 'Fort games', icon: '🏰', color: '#bfe3ff', levels: ['snowball', 'bomb', 'fly'] },
 ];
 
 // The levels a set plays, as indices into `levels`. A mix picks `count` different levels at random and doesn't

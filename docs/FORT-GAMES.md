@@ -5,8 +5,8 @@ cut-out moved into it. Kids standing an arm's reach apart in the room end up far
 can throw things at each other, splat each other with mud, or fly side by side. Family guests in another home get
 forts too, the same way.
 
-The two fort games so far are [`snowball.js`](../src/levels/snowball.js) (**Snowball fight!**) and
-[`fly.js`](../src/levels/fly.js) (**Fly high!**). Read [ADDING-GAMES.md](ADDING-GAMES.md) first: a fort game is
+The fort games so far are [`snowball.js`](../src/levels/snowball.js) (**Snowball fight!**),
+[`fly.js`](../src/levels/fly.js) (**Fly high!**) and [`bomb.js`](../src/levels/bomb.js) (**Pass the bomb!**). Read [ADDING-GAMES.md](ADDING-GAMES.md) first: a fort game is
 an ordinary level with `forts: true`, and everything there still applies. This page covers what is different.
 
 ## Contents
@@ -38,11 +38,14 @@ These come from Calum (2026-10-19), and they are why fort games feel different f
    hearts from the kid who was hit. Make the hit kid look silly (a carrot nose, a snow hat, a spin) instead.
 5. **Everyone gets the same fun.** Share targets around (Snowball fight sends a throw to the next fort along).
    A kid alone plays against the monkey.
+6. **The goal is obvious in seconds, without words** (Calum, 2026-10-21). Fly high! gets lots of laughs, but it didn't
+   make much sense to play. Show it in the picture: the thing is on *your* head, it flashes
+   and shakes, a big word bounces over the kid whose turn it is.
 
 ## Make a fort game
 
 1. Copy a fort game, not `_template.js`: `snowball.js` shows throwing, catching and mud, `fly.js` shows lifting a
-   kid's picture and things floating down each kid's own column.
+   kid's picture and things floating down each kid's own column, `bomb.js` shows one thing passed fort to fort.
 2. Keep `forts: true` in the level object. That is all it takes for the engine to put everyone in forts.
 3. Read the forts every frame with `forts(g)` from `kit.js`, in `update` and in `draw`. Use each fort's `hands`,
    `circles` and `head` for hit tests: they are already moved into the fort.
@@ -58,8 +61,8 @@ These come from Calum (2026-10-19), and they are why fort games feel different f
 - **Layout.** Forts are equal columns with a gap between them (`FORT.gap`, the no-man's-land snowballs fly over).
   At the start of a level, forts go left to right in the order the kids stand. Someone who joins later gets the
   next fort along, so nobody else's fort moves.
-- **Never fewer than two forts** (`FORT.minForts`). A kid alone gets a spare fort for the level to fill: both
-  games put [the monkey](#the-monkey-and-people-joining) there.
+- **Never fewer than two forts** (`FORT.minForts`). A kid alone gets a spare fort for the level to fill: every
+  fort game puts [the monkey](#the-monkey-and-people-joining) there.
 - **Each kid's slice.** The camera picture is cut halfway between neighbouring kids, and each slice is drawn in
   its kid's fort. Arms reaching into a neighbour's slice get clipped: that's fine.
 - **Centring and scaling.** A fort follows its kid gently (`FORT.follow`, `FORT.sway`), and a kid who would not fit
@@ -148,7 +151,7 @@ second to arrive.
 ## Testing
 
 - `test/unit/all-levels.test.js` plays every level, fort games included, with 0 to 4 pretend kids.
-- `test/unit/forts.test.js` covers the layout (order, joining, dropouts, scaling), arm pumps, and the rules of both
+- `test/unit/forts.test.js` covers the layout (order, joining, dropouts, scaling), arm pumps, and the rules of the
   fort games. Add your game's rules there. A test player is built with `computeFeatures`, and hit tests go
   through the forts, so put hands in camera space and let the forts map them.
 - `npm run test:e2e` plays every level in the browser and checks the performance on a slow laptop. Drawing a
@@ -156,7 +159,6 @@ second to arrive.
 
 ## Ideas
 
-- **Hot potato**: a fizzing bomb is passed fort to fort by arm pumps; whoever holds it at the bang gets soot.
 - **Volley**: a beach ball floats between forts; reach up to bop it on.
 - **Pie in the face**: reach up for a pie that floats over your fort and pump to throw it.
 - **Team forts**: the home team against the grandparents' house on a family call.

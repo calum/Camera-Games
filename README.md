@@ -25,6 +25,7 @@ Thirteen short levels (30 to 60 seconds each), in the order they appear in the p
 | **Hole in the wall!** (game show) | A wall rushes at you with a pose-shaped hole: strike the pose before it arrives. |
 | **Snowball fight!** (snowy mountains) | A fort game: everyone gets their own snow fort. Hand down to make a snowball, lift it over your head to throw it at the next fort. Hits give carrot noses, snow hats, wobbles and spins; five hits and you're a snowman. Touch the mud bucket to splat everyone else, then wipe it off. Alone? You play a cheeky monkey. |
 | **Fly high!** (sky) | A fort game: flap your arms to fly up your own column of sky, arms out to glide. Catch the stars; storm clouds make you spin out. Grab the tickly feather and everyone else spins. Alone, a flying monkey keeps you company. |
+| **Pass the bomb!** (sunny park) | A fort game: hot potato with a fizzing cartoon bomb. It lands on your head: hand down, then up high to throw it to the next fort (or just bop it). It flashes red before it goes BOOM, and whoever has it gets a sooty face and spiky hair. Every throw scores; the last thrower before the bang scores more. Alone, the monkey plays catch (and panics). |
 | **Dance party** (disco) | Copy the stick-figure pose on screen (arms up, airplane, hands on head) and hold it. |
 
 Every level has its own synthesized sound effects, and the game quietly eases off when the kids keep missing
