@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-Guidance for AI coding assistants working in this repo. For what the game is and how to play it, read
+Guidance for AI coding assistants working in this repo. For the handover (history, decisions, Calum's rules, open
+questions), read [project.md](project.md) first. For what the game is and how to play it, read
 [README.md](README.md); for design decisions and the roadmap, [docs/PLAN.md](docs/PLAN.md).
 
 ## What this is
